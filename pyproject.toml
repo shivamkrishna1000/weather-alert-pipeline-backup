@@ -5,4 +5,4 @@ ignore-init-module = true
 ignore-magic = true
 ignore-semiprivate = true
 ignore-private = true
-exclude = ["tests", ".venv"]
+exclude = ["tests", ".venv", "rnd_weather_validation"]

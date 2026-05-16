@@ -4,6 +4,8 @@ Entry point for greenhouse data pipeline.
 
 import sys
 
+import psycopg2
+
 from app.config import get_database_url, load_environment
 from app.database import get_connection
 from app.pipelines.delivery_pipeline import run_delivery_pipeline
@@ -83,7 +85,25 @@ def run_daily_pipeline(connection) -> None:
     print("Weather pipeline completed.")
 
     print("Starting delivery pipeline...")
-    run_delivery_pipeline(connection)
+
+    # Retry delivery once if DB connection becomes stale
+    try:
+        run_delivery_pipeline(connection)
+
+    except psycopg2.OperationalError as e:
+        print(f"Database connection lost before delivery: {e}")
+        print("Reconnecting and retrying delivery pipeline...")
+
+        connection.close()
+
+        database_url = get_database_url()
+        new_connection = get_connection(database_url)
+
+        try:
+            run_delivery_pipeline(new_connection)
+        finally:
+            new_connection.close()
+
     print("Delivery pipeline completed.")
 
     print("Daily pipeline completed.")
