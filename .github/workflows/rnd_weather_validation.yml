@@ -12,6 +12,9 @@ on:
     # 3:00 PM IST
     - cron: "30 9 * * *"
 
+    # 10:00 PM IST
+    - cron: "35 16 * * *"
+
 jobs:
 
   run-rnd-weather-validation:
