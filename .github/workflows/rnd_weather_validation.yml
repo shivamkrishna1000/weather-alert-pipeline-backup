@@ -42,7 +42,7 @@ jobs:
 
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
 
-          WEATHERAPI_API_KEY: ${{ secrets.WEATHERAPI_API_KEY }}
+          WEATHER_API_KEY: ${{ secrets.WEATHERAPI_API_KEY }}
 
           RND_WATI_API_URL: ${{ secrets.RND_WATI_API_URL }}
 
