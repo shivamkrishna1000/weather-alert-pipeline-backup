@@ -8,3 +8,4 @@ ruff
 pytest-cov
 scikit_learn
 numpy
+tzdata

@@ -1,11 +1,12 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 
 def build_template_parameters(
     comparison_data,
 ):
 
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Asia/Kolkata"))
 
     date = now.strftime("%d %B %Y")
 

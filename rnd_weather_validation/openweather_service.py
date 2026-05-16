@@ -29,17 +29,20 @@ def extract_openweather_next_12_hours(data):
 
     timezone_offset = data["city"]["timezone"]
 
-    now = datetime.utcnow() + timedelta(seconds=timezone_offset)
+    now_utc = datetime.utcnow()
 
-    cutoff = now + timedelta(hours=12)
+    cutoff_utc = now_utc + timedelta(hours=12)
 
     filtered = []
 
     for item in forecasts:
 
-        forecast_time = datetime.strptime(item["dt_txt"], "%Y-%m-%d %H:%M:%S")
+        forecast_utc = datetime.utcfromtimestamp(item["dt"])
 
-        if now <= forecast_time <= cutoff:
+        if now_utc <= forecast_utc <= cutoff_utc:
+
+            item["timezone_offset"] = timezone_offset
+
             filtered.append(item)
 
     return filtered
@@ -47,15 +50,26 @@ def extract_openweather_next_12_hours(data):
 
 def summarize_openweather_forecast(forecasts):
 
-    current_date = datetime.strptime(forecasts[0]["dt_txt"], "%Y-%m-%d %H:%M:%S").date()
+    timezone_offset = forecasts[0]["timezone_offset"]
 
-    def format_time(dt_string, current_date):
+    current_date = (
+        datetime.utcfromtimestamp(forecasts[0]["dt"])
+        + timedelta(seconds=timezone_offset)
+    ).date()
 
-        dt = datetime.strptime(dt_string, "%Y-%m-%d %H:%M:%S")
+    def format_time(
+        timestamp,
+        current_date,
+        timezone_offset,
+    ):
 
-        formatted_time = dt.strftime("%I:%M %p").lstrip("0")
+        local_dt = datetime.utcfromtimestamp(timestamp) + timedelta(
+            seconds=timezone_offset
+        )
 
-        if dt.date() > current_date:
+        formatted_time = local_dt.strftime("%I:%M %p").lstrip("0")
+
+        if local_dt.date() > current_date:
 
             formatted_time += " (Tomorrow)"
 
@@ -78,30 +92,34 @@ def summarize_openweather_forecast(forecasts):
     if rainy_forecasts:
 
         rain_window = {
-            "start": format_time(rainy_forecasts[0]["dt_txt"], current_date),
-            "end": format_time(rainy_forecasts[-1]["dt_txt"], current_date),
+            "start": format_time(
+                rainy_forecasts[0]["dt"], current_date, timezone_offset
+            ),
+            "end": format_time(
+                rainy_forecasts[-1]["dt"], current_date, timezone_offset
+            ),
         }
 
     return {
         "max_temp": {
             "value": max_temp["main"]["temp_max"],
-            "time": format_time(max_temp["dt_txt"], current_date),
+            "time": format_time(max_temp["dt"], current_date, timezone_offset),
         },
         "min_temp": {
             "value": min_temp["main"]["temp_min"],
-            "time": format_time(min_temp["dt_txt"], current_date),
+            "time": format_time(min_temp["dt"], current_date, timezone_offset),
         },
         "max_humidity": {
             "value": max_humidity["main"]["humidity"],
-            "time": format_time(max_humidity["dt_txt"], current_date),
+            "time": format_time(max_humidity["dt"], current_date, timezone_offset),
         },
         "max_wind": {
             "value": round(max_wind["wind"]["speed"] * 3.6, 1),
-            "time": format_time(max_wind["dt_txt"], current_date),
+            "time": format_time(max_wind["dt"], current_date, timezone_offset),
         },
         "max_rain_probability": {
             "value": round(max_rain_prob.get("pop", 0) * 100),
-            "time": format_time(max_rain_prob["dt_txt"], current_date),
+            "time": format_time(max_rain_prob["dt"], current_date, timezone_offset),
         },
         "rain_window": rain_window,
     }
