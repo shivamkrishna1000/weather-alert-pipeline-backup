@@ -1,16 +1,17 @@
+import os
 from datetime import datetime, timedelta
 
 import requests
 
-API_KEY = "db236bd6305f4156a1b61443260604"
-
 
 def fetch_weatherapi_forecast(latitude, longitude):
+
+    api_key = os.getenv("WEATHER_API_KEY")
 
     url = "http://api.weatherapi.com/v1/forecast.json"
 
     params = {
-        "key": API_KEY,
+        "key": api_key,
         "q": f"{latitude},{longitude}",
         "days": 2,
         "aqi": "no",

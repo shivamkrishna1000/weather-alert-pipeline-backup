@@ -1,11 +1,11 @@
+import os
 from datetime import datetime, timedelta
 
 import requests
 
-API_KEY = "22a6d5f8ab3380c5286844d19c74fd2a"
-
 
 def fetch_openweather_forecast(latitude, longitude):
+    api_key = os.getenv("OPENWEATHER_API_KEY")
 
     url = "https://api.openweathermap.org/data/2.5/forecast"
 
@@ -13,7 +13,7 @@ def fetch_openweather_forecast(latitude, longitude):
         "lat": latitude,
         "lon": longitude,
         "units": "metric",
-        "appid": API_KEY,
+        "appid": api_key,
     }
 
     response = requests.get(url, params=params)
