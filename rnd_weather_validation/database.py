@@ -1,3 +1,6 @@
+from psycopg2.extras import Json
+
+
 def create_rnd_tables(connection) -> None:
     """
     Create R&D validation tables.
@@ -7,45 +10,65 @@ def create_rnd_tables(connection) -> None:
 
     cursor.execute(
         """
-        CREATE TABLE IF NOT EXISTS rnd_weather_provider_snapshots (
+        CREATE TABLE IF NOT EXISTS
+        rnd_weather_snapshots (
 
             id SERIAL PRIMARY KEY,
 
-            provider TEXT,
+            location_name TEXT
+            NOT NULL,
 
-            latitude DOUBLE PRECISION,
-            longitude DOUBLE PRECISION,
+            collected_at TIMESTAMP
+            DEFAULT NOW(),
 
-            current_temp FLOAT,
-            current_feels_like FLOAT,
-            current_humidity FLOAT,
-            current_wind FLOAT,
-            current_rain FLOAT,
-            current_rain_probability FLOAT,
+            current_weather JSONB
+            NOT NULL,
 
-            max_temp FLOAT,
-            max_temp_time TEXT,
+            today_forecast JSONB
+            NOT NULL,
 
-            min_temp FLOAT,
-            min_temp_time TEXT,
+            tomorrow_forecast JSONB
+            NOT NULL,
 
-            max_humidity FLOAT,
-            max_humidity_time TEXT,
+            day3_forecast JSONB
+            NOT NULL,
 
-            max_wind FLOAT,
-            max_wind_time TEXT,
-
-            max_rain_probability FLOAT,
-            max_rain_probability_time TEXT,
-
-            rain_window_start TEXT,
-            rain_window_end TEXT,
-
-            fetched_at TIMESTAMP DEFAULT NOW()
+            weather_report TEXT
+            NOT NULL
         )
         """
     )
 
     connection.commit()
+    cursor.close()
 
+
+def insert_weather_snapshot(
+    connection,
+    location_name,
+    current_weather,
+    today_forecast,
+    tomorrow_forecast,
+    day3_forecast,
+    weather_report,
+) -> None:
+
+    cursor = connection.cursor()
+
+    query = """
+        INSERT INTO rnd_weather_snapshots (location_name, current_weather, today_forecast, tomorrow_forecast, day3_forecast, weather_report)
+        VALUES (%s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+    """
+
+    values = (
+        location_name,
+        Json(current_weather),
+        Json(today_forecast),
+        Json(tomorrow_forecast),
+        Json(day3_forecast),
+        weather_report,
+    )
+
+    cursor.execute(query, values)
+    connection.commit()
     cursor.close()

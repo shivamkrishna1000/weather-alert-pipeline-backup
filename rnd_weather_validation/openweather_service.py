@@ -1,143 +1,111 @@
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 
 
-def fetch_openweather_forecast(latitude, longitude):
+def fetch_openweather_data(latitude, longitude):
+
     api_key = os.getenv("OPENWEATHER_API_KEY")
 
-    url = "https://api.openweathermap.org/data/2.5/forecast"
+    url = "https://api.openweathermap.org" "/data/3.0/onecall"
 
     params = {
         "lat": latitude,
         "lon": longitude,
-        "units": "metric",
         "appid": api_key,
+        "units": "metric",
+        "exclude": "minutely,alerts",
     }
 
-    response = requests.get(url, params=params)
+    response = requests.get(
+        url,
+        params=params,
+    )
 
     response.raise_for_status()
-
     return response.json()
 
 
-def extract_openweather_next_12_hours(data):
+def convert_timestamp(timestamp, timezone_name):
 
-    forecasts = data["list"]
-
-    timezone_offset = data["city"]["timezone"]
-
-    now_utc = datetime.utcnow()
-
-    cutoff_utc = now_utc + timedelta(hours=12)
-
-    filtered = []
-
-    for item in forecasts:
-
-        forecast_utc = datetime.utcfromtimestamp(item["dt"])
-
-        if now_utc <= forecast_utc <= cutoff_utc:
-
-            item["timezone_offset"] = timezone_offset
-
-            filtered.append(item)
-
-    return filtered
+    timezone = ZoneInfo(timezone_name)
+    return datetime.fromtimestamp(timestamp, timezone)
 
 
-def summarize_openweather_forecast(forecasts):
+def extract_current_weather(data):
 
-    timezone_offset = forecasts[0]["timezone_offset"]
+    current = data["current"]
+    timezone_name = data["timezone"]
 
-    current_date = (
-        datetime.utcfromtimestamp(forecasts[0]["dt"])
-        + timedelta(seconds=timezone_offset)
-    ).date()
-
-    def format_time(
-        timestamp,
-        current_date,
-        timezone_offset,
-    ):
-
-        local_dt = datetime.utcfromtimestamp(timestamp) + timedelta(
-            seconds=timezone_offset
-        )
-
-        formatted_time = local_dt.strftime("%I:%M %p").lstrip("0")
-
-        if local_dt.date() > current_date:
-
-            formatted_time += " (Tomorrow)"
-
-        return formatted_time
-
-    max_temp = max(forecasts, key=lambda x: x["main"]["temp_max"])
-
-    min_temp = min(forecasts, key=lambda x: x["main"]["temp_min"])
-
-    max_humidity = max(forecasts, key=lambda x: x["main"]["humidity"])
-
-    max_wind = max(forecasts, key=lambda x: x["wind"]["speed"])
-
-    max_rain_prob = max(forecasts, key=lambda x: x.get("pop", 0))
-
-    rainy_forecasts = [f for f in forecasts if f.get("pop", 0) >= 0.4]
-
-    rain_window = None
-
-    if rainy_forecasts:
-
-        rain_window = {
-            "start": format_time(
-                rainy_forecasts[0]["dt"], current_date, timezone_offset
-            ),
-            "end": format_time(
-                rainy_forecasts[-1]["dt"], current_date, timezone_offset
-            ),
-        }
+    current_dt = convert_timestamp(
+        current["dt"],
+        timezone_name,
+    )
 
     return {
-        "max_temp": {
-            "value": max_temp["main"]["temp_max"],
-            "time": format_time(max_temp["dt"], current_date, timezone_offset),
-        },
-        "min_temp": {
-            "value": min_temp["main"]["temp_min"],
-            "time": format_time(min_temp["dt"], current_date, timezone_offset),
-        },
-        "max_humidity": {
-            "value": max_humidity["main"]["humidity"],
-            "time": format_time(max_humidity["dt"], current_date, timezone_offset),
-        },
-        "max_wind": {
-            "value": round(max_wind["wind"]["speed"] * 3.6, 1),
-            "time": format_time(max_wind["dt"], current_date, timezone_offset),
-        },
-        "max_rain_probability": {
-            "value": round(max_rain_prob.get("pop", 0) * 100),
-            "time": format_time(max_rain_prob["dt"], current_date, timezone_offset),
-        },
-        "rain_window": rain_window,
+        "datetime": current_dt,
+        "temp": current["temp"],
+        "feels_like": current["feels_like"],
+        "humidity": current["humidity"],
+        "wind_speed": round(current["wind_speed"] * 3.6, 2),
+        "rain": current.get("rain", {}).get("1h", 0),
     }
 
 
-def extract_openweather_current_weather(data):
+def group_hourly_forecast(data):
 
-    first_forecast = data["list"][0]
+    timezone_name = data["timezone"]
 
-    rain_data = first_forecast.get("rain", {})
+    grouped_forecast = {
+        "today": {
+            "summary": data["daily"][0]["summary"],
+            "hourly": [],
+        },
+        "tomorrow": {
+            "summary": data["daily"][1]["summary"],
+            "hourly": [],
+        },
+    }
 
-    rain_mm = rain_data.get("3h", 0)
+    current_date = convert_timestamp(data["current"]["dt"], timezone_name).date()
+
+    tomorrow_date = current_date.fromordinal(current_date.toordinal() + 1)
+
+    for hour in data["hourly"]:
+
+        hour_dt = convert_timestamp(hour["dt"], timezone_name)
+
+        forecast_entry = {
+            "datetime": hour_dt,
+            "temp": hour["temp"],
+            "humidity": hour["humidity"],
+            "wind_speed": round(hour["wind_speed"] * 3.6, 2),
+            "rain_probability": int(hour.get("pop", 0) * 100),
+            "rain": hour.get("rain", {}).get("1h", 0),
+            "condition": hour["weather"][0]["description"],
+        }
+
+        if hour_dt.date() == current_date:
+            grouped_forecast["today"]["hourly"].append(forecast_entry)
+
+        elif hour_dt.date() == tomorrow_date:
+            grouped_forecast["tomorrow"]["hourly"].append(forecast_entry)
+
+    return grouped_forecast
+
+
+def extract_day3_forecast(data):
+
+    day3 = data["daily"][2]
 
     return {
-        "temp": round(first_forecast["main"]["temp"], 1),
-        "feels_like": round(first_forecast["main"]["feels_like"], 1),
-        "humidity": first_forecast["main"]["humidity"],
-        "wind": round(first_forecast["wind"]["speed"] * 3.6, 1),
-        "rain": rain_mm,
-        "rain_probability": round(first_forecast.get("pop", 0) * 100),
+        "summary": day3["summary"],
+        "min_temp": day3["temp"]["min"],
+        "max_temp": day3["temp"]["max"],
+        "humidity": day3["humidity"],
+        "wind_speed": round(day3["wind_speed"] * 3.6, 2),
+        "rain_probability": int(day3.get("pop", 0) * 100),
+        "rain": day3.get("rain", 0),
     }
