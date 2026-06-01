@@ -59,8 +59,7 @@ def create_tables(connection) -> None:
             taluk TEXT,
             village TEXT,
             status TEXT,
-            geocoded BOOLEAN DEFAULT FALSE,
-            cluster_key TEXT
+            geocoded BOOLEAN DEFAULT FALSE
         )
         """
     )
@@ -79,7 +78,6 @@ def create_tables(connection) -> None:
             district TEXT,
             state TEXT,
             region TEXT,
-            cluster TEXT,
             attempts INTEGER DEFAULT 0
         )
         """
@@ -108,16 +106,14 @@ def create_tables(connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS weather_cache (
             cluster_key TEXT PRIMARY KEY,
+
             latitude DOUBLE PRECISION,
             longitude DOUBLE PRECISION,
 
-            max_temp FLOAT,
-            min_temp FLOAT,
-            max_rain FLOAT,
-            rain_probability FLOAT,
-            rain_hours INT,
-            max_humidity FLOAT,
-            max_wind FLOAT,
+            current_weather JSONB,
+            today_forecast JSONB,
+            tomorrow_forecast JSONB,
+            day3_forecast JSONB,
 
             fetched_at TIMESTAMP
         )
@@ -128,17 +124,16 @@ def create_tables(connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS weather_data (
             id SERIAL PRIMARY KEY,
+
             cluster_key TEXT,
+
             latitude DOUBLE PRECISION,
             longitude DOUBLE PRECISION,
 
-            max_temp FLOAT,
-            min_temp FLOAT,
-            max_rain FLOAT,
-            rain_probability FLOAT,
-            rain_hours INT,
-            max_humidity FLOAT,
-            max_wind FLOAT,
+            current_weather JSONB,
+            today_forecast JSONB,
+            tomorrow_forecast JSONB,
+            day3_forecast JSONB,
 
             fetched_at TIMESTAMP
         )

@@ -38,8 +38,7 @@ def insert_greenhouses(connection, records: list[dict]) -> None:
                 taluk = COALESCE(excluded.taluk, greenhouses.taluk),
                 village = COALESCE(excluded.village, greenhouses.village),
                 status = COALESCE(excluded.status, greenhouses.status),
-                geocoded = excluded.geocoded,
-                cluster_key = greenhouses.cluster_key
+                geocoded = excluded.geocoded
             """,
             (
                 r.get("id"),
@@ -81,8 +80,8 @@ def insert_missing_location(connection, records: list[dict]) -> None:
         cursor.execute(
             """
             INSERT INTO greenhouses_missing_location
-            (id, name, farmer_name, phone, status, village, taluk, district, state, region, cluster, attempts)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (id, name, farmer_name, phone, status, village, taluk, district, state, region, attempts)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(id) DO UPDATE SET
                 name=excluded.name,
                 farmer_name=excluded.farmer_name,
@@ -92,8 +91,7 @@ def insert_missing_location(connection, records: list[dict]) -> None:
                 taluk=excluded.taluk,
                 district=excluded.district,
                 state=excluded.state,
-                region=excluded.region,
-                cluster=excluded.cluster
+                region=excluded.region
             """,
             (
                 r.get(ZOHO_FIELDS["id"]),
@@ -106,7 +104,6 @@ def insert_missing_location(connection, records: list[dict]) -> None:
                 r.get(ZOHO_FIELDS["district"]),
                 r.get(ZOHO_FIELDS["state"]),
                 r.get(ZOHO_FIELDS["region"]),
-                r.get(ZOHO_FIELDS["cluster"]),
                 0,
             ),
         )

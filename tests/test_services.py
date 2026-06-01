@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 import requests
 
 from app.constants import ZOHO_FIELDS
@@ -13,7 +12,7 @@ from app.services.delivery_service import (
 from app.services.geocode_service import should_retry
 from app.services.greenhouse_service import process_greenhouse_records
 from app.services.wati_service import send_whatsapp_message
-from app.services.weather_service import get_weather, normalize_weather
+from app.services.weather_service import build_weather_payload
 
 # ------------------ GREENHOUSE SERVICE ------------------
 
@@ -52,101 +51,212 @@ def test_should_retry_logic():
 # ------------------ WEATHER SERVICE ------------------
 
 
-def test_normalize_weather_forecast_structure():
+def test_build_weather_payload_calls_fetch():
 
-    data = {
-        "location": {"localtime": "2026-04-13 10:00"},
-        "forecast": {
-            "forecastday": [
-                {
-                    "day": {
-                        "maxtemp_c": 30,
-                        "mintemp_c": 20,
-                        "daily_chance_of_rain": 60,
-                        "maxwind_kph": 10,
-                    },
-                    "hour": [
-                        {
-                            "time": "2026-04-13 10:00",
-                            "temp_c": 30,
-                            "humidity": 50,
-                            "precip_mm": 1,
-                            "chance_of_rain": 60,
-                            "will_it_rain": 1,
-                            "wind_kph": 10,
-                        }
-                    ]
-                    * 12,
-                }
-            ]
+    with patch("app.services.weather_service.fetch_weather_raw") as mock_fetch, patch(
+        "app.services.weather_service.extract_current_weather",
+        return_value={"temp": 30},
+    ), patch(
+        "app.services.weather_service.group_hourly_forecast",
+        return_value={
+            "today": {
+                "summary": "Sunny",
+                "hourly": [
+                    {
+                        "temp": 30,
+                        "humidity": 50,
+                        "wind_speed": 10,
+                        "rain": 0,
+                        "rain_probability": 0,
+                        "datetime": "2026-01-01T10:00:00",
+                    }
+                ],
+            },
+            "tomorrow": {
+                "summary": "Cloudy",
+                "hourly": [
+                    {
+                        "temp": 28,
+                        "humidity": 60,
+                        "wind_speed": 12,
+                        "rain": 0,
+                        "rain_probability": 10,
+                        "datetime": "2026-01-02T10:00:00",
+                    }
+                ],
+            },
         },
-    }
+    ), patch(
+        "app.services.weather_service.extract_day3_forecast",
+        return_value={"summary": "Dry"},
+    ):
 
-    result = normalize_weather(data)
+        mock_fetch.return_value = {}
 
-    assert result["max_temp"] == 30
-    assert result["rain_hours"] == 12
-
-
-def test_get_weather_calls_fetch():
-
-    raw_data = {
-        "location": {"localtime": "2026-04-13 10:00"},
-        "forecast": {
-            "forecastday": [
-                {
-                    "day": {
-                        "maxtemp_c": 30,
-                        "mintemp_c": 20,
-                        "daily_chance_of_rain": 60,
-                        "maxwind_kph": 10,
-                    },
-                    "hour": [
-                        {
-                            "time": "2026-04-13 10:00",
-                            "temp_c": 30,
-                            "humidity": 50,
-                            "precip_mm": 1,
-                            "chance_of_rain": 60,
-                            "will_it_rain": 1,
-                            "wind_kph": 10,
-                        }
-                    ]
-                    * 12,
-                }
-            ]
-        },
-    }
-
-    with patch(
-        "app.services.weather_service.fetch_weather_raw", return_value=raw_data
-    ) as mock_fetch:
-
-        result = get_weather(1, 2)
+        result = build_weather_payload(1, 2)
 
         mock_fetch.assert_called_once_with(1, 2)
-        assert "max_temp" in result
+
+        assert "current_weather" in result
+        assert "today_forecast" in result
+        assert "tomorrow_forecast" in result
+        assert "day3_forecast" in result
 
 
-def test_normalize_weather_no_hours():
-    data = {
-        "forecast": {
-            "forecastday": [
-                {
-                    "day": {
-                        "maxtemp_c": 30,
-                        "mintemp_c": 20,
-                        "daily_chance_of_rain": 0,
-                        "maxwind_kph": 5,
-                    },
-                    "hour": [],
-                }
-            ]
-        }
+def test_summarize_rain_empty():
+
+    from app.services.weather_service import summarize_rain
+
+    result = summarize_rain([])
+
+    assert result == {
+        "rain_probability": 0,
+        "rain_mm": 0,
     }
 
-    with pytest.raises(RuntimeError):
-        normalize_weather(data)
+
+def test_extract_rain_windows_no_rain():
+
+    from app.services.weather_service import extract_rain_windows
+
+    result = extract_rain_windows([])
+
+    assert result == ["No significant rain expected"]
+
+
+def test_build_metric_entry():
+
+    from app.services.weather_service import build_metric_entry
+
+    result = build_metric_entry(
+        {
+            "temp": 35,
+            "datetime": "2026-01-01T15:00:00",
+        },
+        "temp",
+    )
+
+    assert result["value"] == 35
+    assert result["time"] == "03:00 PM"
+
+
+def test_extract_day3_forecast():
+
+    from app.services.weather_service import extract_day3_forecast
+
+    result = extract_day3_forecast(
+        {
+            "daily": [
+                {},
+                {},
+                {
+                    "summary": "Dry",
+                    "temp": {
+                        "min": 20,
+                        "max": 35,
+                    },
+                    "humidity": 60,
+                    "wind_speed": 5,
+                    "pop": 0.5,
+                    "rain": 3,
+                },
+            ]
+        }
+    )
+
+    assert result["summary"] == "Dry"
+    assert result["max_temp"] == 35
+    assert result["rain_probability"] == 50
+
+
+def test_extract_current_weather():
+
+    from app.services.weather_service import extract_current_weather
+
+    with patch("app.services.weather_service.convert_timestamp") as mock_convert:
+
+        from datetime import datetime
+
+        mock_convert.return_value = datetime.fromisoformat("2026-01-01T10:00:00")
+
+        result = extract_current_weather(
+            {
+                "timezone": "Asia/Kolkata",
+                "current": {
+                    "dt": 123,
+                    "temp": 30,
+                    "feels_like": 34,
+                    "humidity": 80,
+                    "wind_speed": 5,
+                    "rain": {"1h": 2},
+                },
+            }
+        )
+
+        assert result["temp"] == 30
+        assert result["wind_speed"] == 18.0
+        assert result["rain"] == 2
+
+
+def test_build_rain_windows_multiple_windows():
+
+    from app.services.weather_service import build_rain_windows
+
+    rainy_hours = [
+        {"datetime": "2026-01-01T10:00:00"},
+        {"datetime": "2026-01-01T11:00:00"},
+        {"datetime": "2026-01-01T15:00:00"},
+    ]
+
+    result = build_rain_windows(rainy_hours)
+
+    assert len(result) == 2
+
+
+def test_group_hourly_forecast():
+
+    from datetime import datetime
+
+    from app.services.weather_service import group_hourly_forecast
+
+    with patch("app.services.weather_service.convert_timestamp") as mock_convert:
+
+        mock_convert.side_effect = [
+            datetime.fromisoformat("2026-01-01T08:00:00"),
+            datetime.fromisoformat("2026-01-01T10:00:00"),
+            datetime.fromisoformat("2026-01-02T10:00:00"),
+        ]
+
+        result = group_hourly_forecast(
+            {
+                "timezone": "Asia/Kolkata",
+                "current": {"dt": 1},
+                "daily": [
+                    {"summary": "Sunny"},
+                    {"summary": "Cloudy"},
+                ],
+                "hourly": [
+                    {
+                        "dt": 2,
+                        "temp": 30,
+                        "humidity": 50,
+                        "wind_speed": 5,
+                        "weather": [{"description": "sunny"}],
+                    },
+                    {
+                        "dt": 3,
+                        "temp": 25,
+                        "humidity": 60,
+                        "wind_speed": 5,
+                        "weather": [{"description": "cloudy"}],
+                    },
+                ],
+            }
+        )
+
+        assert len(result["today"]["hourly"]) == 1
+
+        assert len(result["tomorrow"]["hourly"]) == 1
 
 
 # ------------------ CLUSTER SERVICE ------------------
@@ -317,115 +427,119 @@ def test_format_message():
 # ------------------ ADVISORY SERVICE ------------------
 
 
-def test_rain_rule_triggers():
-    weather = {
-        "max_temp": 30,
-        "min_temp": 20,
-        "max_rain": 25,
-        "rain_probability": 90,
-        "rain_hours": 5,
-        "max_humidity": 50,
-        "max_wind": 5,
+def build_advisory_payload(
+    rain_probability=0,
+    rain_mm=0,
+    max_temp=30,
+    humidity=50,
+    wind=10,
+):
+    return {
+        "current_weather": {
+            "temp": 30,
+            "feels_like": 30,
+            "humidity": 50,
+            "wind_speed": 5,
+            "rain": 0,
+        },
+        "today_forecast": {
+            "summary": "Test",
+            "max_temp": {
+                "value": max_temp,
+                "time": "12:00 PM",
+            },
+            "min_temp": {
+                "value": 20,
+                "time": "06:00 AM",
+            },
+            "max_humidity": {
+                "value": humidity,
+                "time": "08:00 AM",
+            },
+            "max_wind": {
+                "value": wind,
+                "time": "03:00 PM",
+            },
+            "rain_probability": rain_probability,
+            "rain_mm": rain_mm,
+            "rain_windows": ["06:00 PM to 08:00 PM"],
+        },
+        "tomorrow_forecast": {
+            "summary": "Test",
+            "max_temp": {
+                "value": 30,
+                "time": "12:00 PM",
+            },
+            "min_temp": {
+                "value": 20,
+                "time": "06:00 AM",
+            },
+            "max_humidity": {
+                "value": 50,
+                "time": "08:00 AM",
+            },
+            "max_wind": {
+                "value": 10,
+                "time": "03:00 PM",
+            },
+            "rain_probability": 0,
+            "rain_mm": 0,
+            "rain_windows": ["No significant rain expected"],
+        },
+        "day3_forecast": {
+            "summary": "Dry",
+            "max_temp": 30,
+            "min_temp": 20,
+            "humidity": 50,
+            "wind_speed": 10,
+            "rain_probability": 10,
+            "rain": 0,
+        },
     }
 
-    result = generate_advisories(weather)
 
-    assert any("rain" in r.lower() for r in result)
+def test_heavy_rain_advisory_triggers():
 
+    payload = build_advisory_payload(
+        rain_probability=90,
+        rain_mm=10,
+    )
 
-def test_wind_rule_triggers():
-    weather = {
-        "max_temp": 30,
-        "min_temp": 20,
-        "max_rain": 0,
-        "rain_probability": 0,
-        "rain_hours": 0,
-        "max_humidity": 50,
-        "max_wind": 30,
-    }
+    result = generate_advisories(payload)
 
-    result = generate_advisories(weather)
-
-    assert any("wind" in r.lower() for r in result)
+    assert "Heavy rain expected today" in result
 
 
-def test_humidity_rule_triggers():
-    weather = {
-        "max_temp": 30,
-        "min_temp": 20,
-        "max_rain": 0,
-        "rain_probability": 0,
-        "rain_hours": 0,
-        "max_humidity": 95,
-        "max_wind": 5,
-    }
+def test_wind_advisory_triggers():
 
-    result = generate_advisories(weather)
+    payload = build_advisory_payload(
+        wind=30,
+    )
 
-    assert any("humidity" in r.lower() for r in result)
+    result = generate_advisories(payload)
+
+    assert "Strong winds expected today" in result
 
 
-def test_combined_conditions():
-    weather = {
-        "max_temp": 35,
-        "min_temp": 25,
-        "max_rain": 20,
-        "rain_probability": 80,
-        "rain_hours": 4,
-        "max_humidity": 90,
-        "max_wind": 25,
-    }
+def test_humidity_advisory_triggers():
 
-    result = generate_advisories(weather)
+    payload = build_advisory_payload(
+        humidity=90,
+    )
 
-    # Should include multiple categories
-    assert len(result) >= 2
+    result = generate_advisories(payload)
+
+    assert "High humidity expected today" in result
 
 
-def test_rain_overrides_temperature():
-    weather = {
-        "max_temp": 40,  # would trigger temp rule
-        "min_temp": 20,
-        "max_rain": 30,  # rain present
-        "rain_probability": 90,
-        "rain_hours": 5,
-        "max_humidity": 50,
-        "max_wind": 5,
-    }
+def test_rain_suppresses_moderate_rain():
 
-    result = generate_advisories(weather)
+    payload = build_advisory_payload(
+        rain_probability=90,
+        rain_mm=10,
+    )
 
-    # temperature irrigation advice should be suppressed
-    assert not any("temperature" in r.lower() for r in result)
+    result = generate_advisories(payload)
 
-
-def test_no_rules_triggered():
-    weather = {
-        "max_temp": 25,
-        "min_temp": 20,
-        "max_rain": 0,
-        "rain_probability": 0,
-        "rain_hours": 0,
-        "max_humidity": 40,
-        "max_wind": 5,
-    }
-
-    result = generate_advisories(weather)
-
-    assert result == []
-
-
-def test_boundary_conditions():
-    weather = {
-        "max_temp": 35,  # boundary
-        "min_temp": 15,
-        "max_rain": 0,
-        "rain_probability": 50,
-        "rain_hours": 0,
-        "max_humidity": 80,
-        "max_wind": 10,
-    }
-
-    result = generate_advisories(weather)
-
-    assert isinstance(result, list)
+    assert "Heavy rain expected today" in result
+    assert "Moderate rainfall possible today" not in result

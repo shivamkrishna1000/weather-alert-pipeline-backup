@@ -1,79 +1,429 @@
-from typing import Dict, List
+"""
+Advisory engine.
 
-from app.core.advisory_rules import RULES
+Responsible for:
+1. Loading advisory rules.
+2. Loading weather schema.
+3. Resolving advisory message placeholders.
+"""
+
+from pathlib import Path
+
+import yaml
+
+CONFIG_DIR = Path(__file__).parent.parent / "config"
 
 
-def generate_advisories(weather: Dict) -> List[str]:
+def load_advisory_rules() -> list[dict]:
     """
-    Generate weather-based advisories using rule-driven evaluation.
+    Load advisory rules from YAML.
 
-    This function applies category-wise rule evaluation on normalized
-    weather features and returns a list of advisory messages.
+    Returns
+    -------
+    list[dict]
+        Advisory rule definitions.
+    """
+    path = CONFIG_DIR / "advisory_rules.yaml"
 
-    Workflow:
-    - Evaluate rules independently for each category:
-        rain, wind, humidity, temperature
-    - Within each category, rules are checked in priority order
-      and only the first matching rule is selected
-    - Apply conflict resolution:
-        - If a rain rule is triggered, temperature rules T1 and T2
-          are ignored to avoid irrigation conflicts
-        - Temperature rule T3 (low temperature) is still allowed
-    - Return advisories ordered by priority:
-        rain → wind → humidity → temperature
+    with open(path, "r", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+
+    return config["rules"]
+
+
+def load_weather_schema() -> dict:
+    """
+    Load weather schema from YAML.
+
+    Returns
+    -------
+    dict
+        Weather schema definition.
+    """
+    path = CONFIG_DIR / "weather_schema.yaml"
+
+    with open(path, "r", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+
+    return config["weather"]
+
+
+def get_nested_value(data: dict, path: str):
+    """
+    Fetch nested value using dot notation.
+
+    Example
+    -------
+    path = "today.max_temp"
+
+    Returns
+    -------
+    Any
+    """
+    value = data
+
+    for part in path.split("."):
+        value = value[part]
+
+    return value
+
+
+def resolve_placeholders(message: str, weather: dict) -> str:
+    """
+    Replace placeholders inside advisory messages.
+
+    Example
+    -------
+    {today.max_temp_time}
+
+    Parameters
+    ----------
+    message : str
+        Advisory message template.
+
+    weather : dict
+        Weather payload.
+
+    Returns
+    -------
+    str
+        Rendered message.
+    """
+    start = message.find("{")
+
+    while start != -1:
+        end = message.find("}", start)
+
+        if end == -1:
+            break
+
+        placeholder = message[start + 1 : end]
+
+        value = get_nested_value(weather, placeholder)
+
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value)
+
+        message = message.replace(
+            f"{{{placeholder}}}",
+            str(value),
+        )
+
+        start = message.find("{")
+
+    return message
+
+
+def evaluate_condition(weather: dict, condition: dict) -> bool:
+    """
+    Evaluate a single condition.
 
     Parameters
     ----------
     weather : dict
-        Dictionary containing normalized weather features:
-        - max_temp : float
-        - min_temp : float
-        - max_rain : float
-        - rain_probability : float
-        - rain_hours : int
-        - max_humidity : float
-        - max_wind : float
+    condition : dict
+
+    Returns
+    -------
+    bool
+    """
+    metric = condition["metric"]
+
+    operator = condition["operator"]
+
+    expected = condition["value"]
+
+    actual = get_nested_value(
+        weather,
+        metric,
+    )
+
+    if operator == ">":
+        return actual > expected
+
+    if operator == ">=":
+        return actual >= expected
+
+    if operator == "<":
+        return actual < expected
+
+    if operator == "<=":
+        return actual <= expected
+
+    if operator == "==":
+        return actual == expected
+
+    if operator == "!=":
+        return actual != expected
+
+    raise ValueError(f"Unsupported operator: {operator}")
+
+
+def evaluate_rule(weather: dict, rule: dict) -> bool:
+    """
+    Evaluate a single rule.
+
+    Parameters
+    ----------
+    weather : dict
+    rule : dict
+
+    Returns
+    -------
+    bool
+    """
+    if not rule["enabled"]:
+        return False
+
+    results = [
+        evaluate_condition(
+            weather,
+            condition,
+        )
+        for condition in rule["conditions"]
+    ]
+
+    condition_type = rule["condition_type"]
+
+    if condition_type == "all":
+        return all(results)
+
+    if condition_type == "any":
+        return any(results)
+
+    raise ValueError(f"Unsupported condition type: " f"{condition_type}")
+
+
+def evaluate_rules(weather: dict) -> list[dict]:
+    """
+    Evaluate all advisory rules with priority and suppression support.
+
+    Workflow:
+    - Load advisory rules from YAML
+    - Sort rules by descending priority
+    - Evaluate each rule
+    - Skip rules suppressed by previously fired rules
+    - Resolve message placeholders
+    - Return final advisory list
+
+    Parameters
+    ----------
+    weather : dict
+        Weather payload used for rule evaluation.
+
+    Returns
+    -------
+    list[dict]
+        Fired advisories containing:
+        - id
+        - category
+        - priority
+        - message
+    """
+    rules = load_advisory_rules()
+
+    rules = sorted(
+        rules,
+        key=lambda rule: rule["priority"],
+        reverse=True,
+    )
+
+    advisories = []
+
+    suppressed_ids = set()
+
+    for rule in rules:
+
+        rule_id = rule["id"]
+
+        if rule_id in suppressed_ids:
+            continue
+
+        if not evaluate_rule(
+            weather,
+            rule,
+        ):
+            continue
+
+        advisories.append(
+            {
+                "id": rule["id"],
+                "category": rule["category"],
+                "priority": rule["priority"],
+                "message": resolve_placeholders(
+                    rule["message"],
+                    weather,
+                ),
+            }
+        )
+
+        suppressed_ids.update(rule.get("suppresses", []))
+
+    return advisories
+
+
+def format_advisories(advisories: list[dict]) -> str:
+    """
+    Format advisories into a WhatsApp-friendly message.
+
+    Rules are grouped by rule ID prefix:
+
+    CUR  -> Current Weather
+    TD   -> Today
+    TM   -> Tomorrow
+    D3   -> Day 3 Outlook
+
+    Parameters
+    ----------
+    advisories : list[dict]
+
+    Returns
+    -------
+    str
+    """
+    current_items = []
+    today_items = []
+    tomorrow_items = []
+    day3_items = []
+
+    for advisory in advisories:
+
+        rule_id = advisory["id"]
+
+        message = advisory["message"].strip()
+
+        if rule_id.startswith("CUR"):
+            current_items.append(message)
+
+        elif rule_id.startswith("TD"):
+            today_items.append(message)
+
+        elif rule_id.startswith("TM"):
+            tomorrow_items.append(message)
+
+        elif rule_id.startswith("D3"):
+            day3_items.append(message)
+
+    lines = []
+
+    if current_items:
+        lines.append("*CURRENT WEATHER*")
+
+        for item in current_items:
+            lines.append(f"• {item}")
+
+        lines.append("")
+
+    if today_items:
+        lines.append("*TODAY*")
+
+        for item in today_items:
+            lines.append(f"• {item}")
+
+        lines.append("")
+
+    if tomorrow_items:
+        lines.append("*TOMORROW*")
+
+        for item in tomorrow_items:
+            lines.append(f"• {item}")
+
+        lines.append("")
+
+    if day3_items:
+        lines.append("*DAY 3 OUTLOOK*")
+
+        for item in day3_items:
+            lines.append(f"• {item}")
+
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+
+def build_rule_weather(payload: dict) -> dict:
+    """
+    Convert OpenWeather payload into
+    rule-engine weather structure.
+
+    Parameters
+    ----------
+    payload : dict
+
+    Returns
+    -------
+    dict
+    """
+    current = payload["current_weather"]
+
+    today = payload["today_forecast"]
+
+    tomorrow = payload["tomorrow_forecast"]
+
+    day3 = payload["day3_forecast"]
+
+    return {
+        "current": {
+            "temp": current["temp"],
+            "feels_like": current["feels_like"],
+            "humidity": current["humidity"],
+            "wind": current["wind_speed"],
+            "rain": current["rain"],
+        },
+        "today": {
+            "summary": today["summary"],
+            "max_temp": today["max_temp"]["value"],
+            "max_temp_time": today["max_temp"]["time"],
+            "min_temp": today["min_temp"]["value"],
+            "min_temp_time": today["min_temp"]["time"],
+            "max_humidity": today["max_humidity"]["value"],
+            "max_humidity_time": today["max_humidity"]["time"],
+            "max_wind": today["max_wind"]["value"],
+            "max_wind_time": today["max_wind"]["time"],
+            "rain_probability": today["rain_probability"],
+            "rainfall": today["rain_mm"],
+            "rain_windows": today["rain_windows"],
+        },
+        "tomorrow": {
+            "summary": tomorrow["summary"],
+            "max_temp": tomorrow["max_temp"]["value"],
+            "max_temp_time": tomorrow["max_temp"]["time"],
+            "min_temp": tomorrow["min_temp"]["value"],
+            "min_temp_time": tomorrow["min_temp"]["time"],
+            "max_humidity": tomorrow["max_humidity"]["value"],
+            "max_humidity_time": tomorrow["max_humidity"]["time"],
+            "max_wind": tomorrow["max_wind"]["value"],
+            "max_wind_time": tomorrow["max_wind"]["time"],
+            "rain_probability": tomorrow["rain_probability"],
+            "rainfall": tomorrow["rain_mm"],
+            "rain_windows": tomorrow["rain_windows"],
+        },
+        "day3": {
+            "summary": day3["summary"],
+            "max_temp": day3["max_temp"],
+            "min_temp": day3["min_temp"],
+            "humidity": day3["humidity"],
+            "max_wind": day3["wind_speed"],
+            "rain_probability": day3["rain_probability"],
+            "rainfall": day3["rain"],
+        },
+    }
+
+
+def generate_advisories(payload: dict) -> str:
+    """
+    Generate advisories from YAML rules.
+
+    Parameters
+    ----------
+    weather : dict
 
     Returns
     -------
     list[str]
-        Ordered list of advisory messages. Returns an empty list
-        if no rules are triggered.
-
-    Notes
-    -----
-    - Rule definitions are externalized in `advisory_rules.py`
-    - Output is deterministic: same input always produces same output
-    - Only one rule per category is selected (first-match principle)
     """
-    selected_rules = {}
+    weather = build_rule_weather(payload)
 
-    # Step 1: Evaluate rules category-wise (first match only)
-    for category in ["rain", "wind", "humidity", "temperature"]:
-        rules = RULES.get(category, [])
+    advisories = evaluate_rules(weather)
 
-        for rule in rules:
-            if rule["condition"](weather):
-                selected_rules[category] = rule
-                break
-
-    # Step 2: Conflict resolution
-    rain_triggered = "rain" in selected_rules
-
-    if rain_triggered and "temperature" in selected_rules:
-        temp_rule_id = selected_rules["temperature"]["id"]
-
-        # Remove T1 and T2 if rain is present
-        if temp_rule_id in {"T1", "T2"}:
-            del selected_rules["temperature"]
-
-    # Step 3: Build ordered advisory list
-    ordered_categories = ["rain", "wind", "humidity", "temperature"]
-
-    advisories = [
-        selected_rules[category]["message"]
-        for category in ordered_categories
-        if category in selected_rules
-    ]
-
-    return advisories
+    return format_advisories(advisories)

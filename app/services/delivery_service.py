@@ -50,7 +50,7 @@ def group_advisories_by_farmer(records: list[dict]) -> dict:
 
 def format_greenhouse_message(greenhouse_name: str, advisories: list[str]) -> str:
     """
-    Format message for a single greenhouse (WATI safe).
+    Format message for a single greenhouse.
 
     Parameters
     ----------
@@ -61,5 +61,6 @@ def format_greenhouse_message(greenhouse_name: str, advisories: list[str]) -> st
     -------
     str
     """
-    advisory_text = ", ".join(advisories)
-    return f"{greenhouse_name}: {advisory_text}"
+    advisory_text = "\n\n".join(advisories)
+
+    return f"*{greenhouse_name}*\n\n" f"{advisory_text}"

@@ -38,10 +38,7 @@ def advisory_already_sent(connection, greenhouse_id: str, advisory: str) -> bool
 
 
 def insert_advisory_log(
-    connection,
-    greenhouse: dict,
-    cluster_key: str,
-    advisory: str,
+    connection, greenhouse: dict, cluster_key: str, advisory: str
 ) -> None:
     """
     Insert advisory delivery log for a greenhouse.

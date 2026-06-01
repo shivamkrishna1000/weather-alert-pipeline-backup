@@ -4,6 +4,8 @@ Database module for storing weather data.
 
 from datetime import UTC, datetime
 
+from psycopg2.extras import Json
+
 from app.config import get_cluster_mode
 from app.services.cluster_service import build_cluster_key, build_distance_clusters
 
@@ -141,58 +143,45 @@ def aggregate_clusters(records: list[dict]) -> list[dict]:
 # -------- CACHE FUNCTIONS --------
 def get_cached_weather(connection, cluster_key: str) -> dict | None:
     """
-    Retrieve cached weather data for a cluster.
+    Retrieve cached weather payload.
 
     Parameters
     ----------
+    connection : Any
     cluster_key : str
-        Unique identifier for the cluster.
 
     Returns
     -------
     dict or None
-        Cached weather data if present.
     """
     cursor = connection.cursor()
 
     cursor.execute(
         """
-        SELECT
-            max_temp, min_temp, max_rain,
-            rain_probability, rain_hours,
-            max_humidity, max_wind,
-            fetched_at
-        FROM weather_cache
-        WHERE cluster_key = %s
+        SELECT current_weather, today_forecast, tomorrow_forecast, day3_forecast, fetched_at FROM weather_cache WHERE cluster_key = %s
         """,
         (cluster_key,),
     )
 
     row = cursor.fetchone()
+
     cursor.close()
 
     if not row:
         return None
-
     (
-        max_temp,
-        min_temp,
-        max_rain,
-        rain_probability,
-        rain_hours,
-        max_humidity,
-        max_wind,
+        current_weather,
+        today_forecast,
+        tomorrow_forecast,
+        day3_forecast,
         fetched_at,
     ) = row
 
     return {
-        "max_temp": max_temp,
-        "min_temp": min_temp,
-        "max_rain": max_rain,
-        "rain_probability": rain_probability,
-        "rain_hours": rain_hours,
-        "max_humidity": max_humidity,
-        "max_wind": max_wind,
+        "current_weather": current_weather,
+        "today_forecast": today_forecast,
+        "tomorrow_forecast": tomorrow_forecast,
+        "day3_forecast": day3_forecast,
         "fetched_at": fetched_at,
     }
 
@@ -227,92 +216,121 @@ def is_cache_fresh(fetched_at) -> bool:
 # -------- WRITE FUNCTIONS --------
 def upsert_weather_cache(connection, cluster: dict) -> None:
     """
-    Insert or update weather cache for a cluster.
+    Store weather cache payload.
 
     Parameters
     ----------
+    connection : Any
     cluster : dict
-        Cluster data with weather fields.
+
+    Returns
+    -------
+    None
     """
     cursor = connection.cursor()
 
     cursor.execute(
         """
         INSERT INTO weather_cache (
-            cluster_key, latitude, longitude,
+            cluster_key,
+            latitude,
+            longitude,
 
-            max_temp, min_temp, max_rain,
-            rain_probability, rain_hours,
-            max_humidity, max_wind,
+            current_weather,
+            today_forecast,
+            tomorrow_forecast,
+            day3_forecast,
 
             fetched_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        ON CONFLICT (cluster_key) DO UPDATE SET
-            max_temp = EXCLUDED.max_temp,
-            min_temp = EXCLUDED.min_temp,
-            max_rain = EXCLUDED.max_rain,
-            rain_probability = EXCLUDED.rain_probability,
-            rain_hours = EXCLUDED.rain_hours,
-            max_humidity = EXCLUDED.max_humidity,
-            max_wind = EXCLUDED.max_wind,
+        VALUES (
+            %s, %s, %s,
+            %s::jsonb,
+            %s::jsonb,
+            %s::jsonb,
+            %s::jsonb,
+            NOW()
+        )
+        ON CONFLICT (cluster_key)
+        DO UPDATE SET
+
+            current_weather = EXCLUDED.current_weather,
+            today_forecast = EXCLUDED.today_forecast,
+            tomorrow_forecast = EXCLUDED.tomorrow_forecast,
+            day3_forecast = EXCLUDED.day3_forecast,
+
             fetched_at = NOW()
         """,
         (
             cluster["cluster_key"],
             cluster["latitude"],
             cluster["longitude"],
-            cluster["max_temp"],
-            cluster["min_temp"],
-            cluster["max_rain"],
-            cluster["rain_probability"],
-            cluster["rain_hours"],
-            cluster["max_humidity"],
-            cluster["max_wind"],
+            Json(cluster["current_weather"]),
+            Json(cluster["today_forecast"]),
+            Json(cluster["tomorrow_forecast"]),
+            Json(cluster["day3_forecast"]),
         ),
     )
 
     connection.commit()
+
     cursor.close()
 
 
 def insert_weather_history(connection, cluster: dict) -> None:
     """
-    Insert historical weather record for a cluster.
+    Insert historical weather payload.
 
     Parameters
     ----------
+    connection : Any
     cluster : dict
-        Cluster data with weather fields.
+
+    Returns
+    -------
+    None
     """
     cursor = connection.cursor()
 
     cursor.execute(
         """
         INSERT INTO weather_data (
-            cluster_key, latitude, longitude,
+            cluster_key,
 
-            max_temp, min_temp, max_rain,
-            rain_probability, rain_hours,
-            max_humidity, max_wind,
+            latitude,
+            longitude,
+
+            current_weather,
+            today_forecast,
+            tomorrow_forecast,
+            day3_forecast,
 
             fetched_at
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        VALUES (
+            %s,
+            %s,
+            %s,
+
+            %s::jsonb,
+            %s::jsonb,
+            %s::jsonb,
+            %s::jsonb,
+
+            NOW()
+        )
         """,
         (
             cluster["cluster_key"],
             cluster["latitude"],
             cluster["longitude"],
-            cluster["max_temp"],
-            cluster["min_temp"],
-            cluster["max_rain"],
-            cluster["rain_probability"],
-            cluster["rain_hours"],
-            cluster["max_humidity"],
-            cluster["max_wind"],
+            Json(cluster["current_weather"]),
+            Json(cluster["today_forecast"]),
+            Json(cluster["tomorrow_forecast"]),
+            Json(cluster["day3_forecast"]),
         ),
     )
 
     connection.commit()
+
     cursor.close()

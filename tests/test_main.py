@@ -50,6 +50,31 @@ def test_main_weekly(mock_env, mock_db, mock_conn, mock_weekly):
     connection.close.assert_called_once()
 
 
+@patch("app.main.run_geocode_pipeline")
+@patch("app.main.run_sync_pipeline")
+def test_run_weekly_pipeline(
+    mock_sync,
+    mock_geocode,
+):
+
+    from app.main import run_weekly_pipeline
+
+    connection = MagicMock()
+
+    run_weekly_pipeline(
+        connection,
+        "db_url",
+    )
+
+    mock_sync.assert_called_once_with(connection)
+
+    mock_geocode.assert_called_once_with(
+        connection,
+        "db_url",
+        batch_size=100,
+    )
+
+
 # ------------------ DAILY ------------------
 
 
@@ -66,6 +91,24 @@ def test_main_daily(mock_env, mock_db, mock_conn, mock_daily):
 
     mock_daily.assert_called_once_with(connection)
     connection.close.assert_called_once()
+
+
+@patch("app.main.run_delivery_pipeline")
+@patch("app.main.run_weather_pipeline")
+def test_run_daily_pipeline_success(
+    mock_weather,
+    mock_delivery,
+):
+
+    from app.main import run_daily_pipeline
+
+    connection = MagicMock()
+
+    run_daily_pipeline(connection)
+
+    mock_weather.assert_called_once_with(connection)
+
+    mock_delivery.assert_called_once_with(connection)
 
 
 # ------------------ DB URL FAILURE ------------------
@@ -108,3 +151,41 @@ def test_main_pipeline_failure(mock_env, mock_db, mock_conn, mock_pipeline):
 
     # IMPORTANT: finally block
     connection.close.assert_called_once()
+
+
+# ------------------ DELIVERY RETRY PATH ------------------
+
+
+@patch("app.main.get_database_url", return_value="db")
+@patch("app.main.get_connection")
+@patch("app.main.run_weather_pipeline")
+def test_run_daily_pipeline_retry_delivery(
+    mock_weather,
+    mock_get_connection,
+    mock_db,
+):
+
+    from psycopg2 import OperationalError
+
+    from app.main import run_daily_pipeline
+
+    original_connection = MagicMock()
+
+    retry_connection = MagicMock()
+
+    mock_get_connection.return_value = retry_connection
+
+    with patch("app.main.run_delivery_pipeline") as mock_delivery:
+
+        mock_delivery.side_effect = [
+            OperationalError("lost"),
+            None,
+        ]
+
+        run_daily_pipeline(original_connection)
+
+    assert mock_delivery.call_count == 2
+
+    original_connection.close.assert_called_once()
+
+    retry_connection.close.assert_called_once()

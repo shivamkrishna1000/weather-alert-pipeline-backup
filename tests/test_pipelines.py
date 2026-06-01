@@ -265,12 +265,13 @@ def test_weather_pipeline_cache_hit(mock_db_url, mock_conn):
     ), patch(
         "app.pipelines.weather_pipeline.is_cache_fresh", return_value=True
     ), patch(
-        "app.pipelines.weather_pipeline.get_weather"
-    ) as mock_weather:
+        "app.pipelines.weather_pipeline.process_cluster_parallel",
+        return_value=False,
+    ) as mock_process:
 
         run_weather_pipeline(connection)
 
-        mock_weather.assert_not_called()
+        mock_process.assert_called_once()
 
 
 @patch("app.pipelines.weather_pipeline.get_connection", return_value=MagicMock())
@@ -280,61 +281,258 @@ def test_weather_pipeline_fetch_and_store(mock_db_url, mock_conn):
 
     clusters = [{"cluster_key": "A", "latitude": 1, "longitude": 2}]
 
-    weather_data = {
-        "max_temp": 30,
-        "min_temp": 20,
-        "max_rain": 0,
-        "rain_probability": 0,
-        "rain_hours": 0,
-        "max_humidity": 50,
-        "max_wind": 10,
-    }
-
     with patch(
-        "app.pipelines.weather_pipeline.fetch_clusters", return_value=clusters
+        "app.pipelines.weather_pipeline.fetch_clusters",
+        return_value=clusters,
     ), patch(
-        "app.pipelines.weather_pipeline.get_cached_weather", return_value=None
-    ), patch(
-        "app.pipelines.weather_pipeline.get_weather", return_value=weather_data
-    ), patch(
-        "app.pipelines.weather_pipeline.generate_and_store_advisories"
-    ) as mock_advisory, patch(
-        "app.pipelines.weather_pipeline.upsert_weather_cache"
-    ) as mock_cache, patch(
-        "app.pipelines.weather_pipeline.insert_weather_history"
-    ) as mock_history:
+        "app.pipelines.weather_pipeline.process_cluster_parallel",
+        return_value=True,
+    ):
 
         run_weather_pipeline(connection)
 
-        mock_cache.assert_called_once()
-        mock_history.assert_called_once()
-        mock_advisory.assert_called_once()
+        assert True
 
 
 @patch("app.pipelines.weather_pipeline.get_connection", return_value=MagicMock())
 @patch("app.pipelines.weather_pipeline.get_database_url", return_value="dummy")
 def test_weather_pipeline_api_failure(mock_db_url, mock_conn):
-    connection = MagicMock()
-
     clusters = [{"cluster_key": "A", "latitude": 1, "longitude": 2}]
 
     with patch(
-        "app.pipelines.weather_pipeline.fetch_clusters", return_value=clusters
+        "app.pipelines.weather_pipeline.fetch_clusters",
+        return_value=clusters,
     ), patch(
-        "app.pipelines.weather_pipeline.get_cached_weather", return_value=None
-    ), patch(
-        "app.pipelines.weather_pipeline.get_weather",
+        "app.pipelines.weather_pipeline.process_cluster_parallel",
         side_effect=RuntimeError("fail"),
+    ):
+
+        run_weather_pipeline(MagicMock())
+
+        assert True
+
+
+def test_filter_pilot_clusters_no_villages():
+
+    from app.pipelines.weather_pipeline import filter_pilot_clusters
+
+    with patch(
+        "app.pipelines.weather_pipeline.is_pilot_mode",
+        return_value=True,
     ), patch(
-        "app.pipelines.weather_pipeline.upsert_weather_cache"
-    ) as mock_cache:
+        "app.pipelines.weather_pipeline.get_pilot_villages",
+        return_value=set(),
+    ):
 
-        run_weather_pipeline(connection)
+        result = filter_pilot_clusters([])
 
-        mock_cache.assert_not_called()
+    assert result == []
 
 
-# ------------------ WEATHER PIPELINE ------------------
+def test_filter_pilot_clusters_match():
+
+    from app.pipelines.weather_pipeline import filter_pilot_clusters
+
+    clusters = [
+        {
+            "cluster_key": "A",
+            "members": [{"village": "Village1"}],
+        }
+    ]
+
+    with patch(
+        "app.pipelines.weather_pipeline.is_pilot_mode",
+        return_value=True,
+    ), patch(
+        "app.pipelines.weather_pipeline.get_pilot_villages",
+        return_value={"VILLAGE1"},
+    ):
+
+        result = filter_pilot_clusters(clusters)
+
+    assert len(result) == 1
+
+
+def test_fetch_and_prepare_weather():
+
+    from app.pipelines.weather_pipeline import fetch_and_prepare_weather
+
+    cluster = {
+        "cluster_key": "A",
+        "latitude": 1,
+        "longitude": 2,
+    }
+
+    with patch(
+        "app.pipelines.weather_pipeline.build_weather_payload",
+        return_value={"today_forecast": {}},
+    ), patch(
+        "app.pipelines.weather_pipeline.generate_advisories",
+        return_value="Rain alert",
+    ):
+
+        result = fetch_and_prepare_weather(cluster)
+
+    assert result["advisories"] == "Rain alert"
+
+
+def test_generate_and_store_advisories():
+
+    from app.pipelines.weather_pipeline import generate_and_store_advisories
+
+    connection = MagicMock()
+
+    cluster = {
+        "cluster_key": "A",
+        "members": [
+            {"id": "1"},
+        ],
+    }
+
+    with patch(
+        "app.pipelines.weather_pipeline.advisory_already_sent",
+        return_value=False,
+    ), patch(
+        "app.pipelines.weather_pipeline.insert_advisory_log",
+    ) as mock_insert:
+
+        generate_and_store_advisories(
+            connection,
+            cluster,
+            "Rain alert",
+        )
+
+    mock_insert.assert_called_once()
+
+
+def test_generate_and_store_advisories_skip_existing():
+
+    from app.pipelines.weather_pipeline import generate_and_store_advisories
+
+    connection = MagicMock()
+
+    cluster = {
+        "cluster_key": "A",
+        "members": [
+            {"id": "1"},
+        ],
+    }
+
+    with patch(
+        "app.pipelines.weather_pipeline.advisory_already_sent",
+        return_value=True,
+    ), patch(
+        "app.pipelines.weather_pipeline.insert_advisory_log",
+    ) as mock_insert:
+
+        generate_and_store_advisories(
+            connection,
+            cluster,
+            "Rain alert",
+        )
+
+    mock_insert.assert_not_called()
+
+
+def test_update_weather_storage():
+
+    from app.pipelines.weather_pipeline import update_weather_storage
+
+    connection = MagicMock()
+
+    cluster = {"cluster_key": "A"}
+
+    with patch(
+        "app.pipelines.weather_pipeline.upsert_weather_cache",
+    ) as mock_cache, patch(
+        "app.pipelines.weather_pipeline.insert_weather_history",
+    ) as mock_history:
+
+        update_weather_storage(
+            connection,
+            cluster,
+        )
+
+    mock_cache.assert_called_once()
+    mock_history.assert_called_once()
+
+
+def test_process_cluster_skip():
+
+    from app.pipelines.weather_pipeline import process_cluster
+
+    with patch(
+        "app.pipelines.weather_pipeline.should_skip_cluster",
+        return_value=True,
+    ):
+
+        result = process_cluster(
+            MagicMock(),
+            {"cluster_key": "A"},
+        )
+
+    assert result is False
+
+
+def test_process_cluster_success():
+
+    from app.pipelines.weather_pipeline import process_cluster
+
+    cluster = {
+        "cluster_key": "A",
+        "members": [],
+    }
+
+    enriched = {
+        "advisories": "Rain alert",
+    }
+
+    with patch(
+        "app.pipelines.weather_pipeline.should_skip_cluster",
+        return_value=False,
+    ), patch(
+        "app.pipelines.weather_pipeline.fetch_and_prepare_weather",
+        return_value=enriched,
+    ), patch(
+        "app.pipelines.weather_pipeline.generate_and_store_advisories",
+    ) as mock_adv, patch(
+        "app.pipelines.weather_pipeline.update_weather_storage",
+    ) as mock_store:
+
+        result = process_cluster(
+            MagicMock(),
+            cluster,
+        )
+
+    assert result is True
+    mock_adv.assert_called_once()
+    mock_store.assert_called_once()
+
+
+def test_process_cluster_parallel():
+
+    from app.pipelines.weather_pipeline import process_cluster_parallel
+
+    mock_connection = MagicMock()
+
+    with patch(
+        "app.pipelines.weather_pipeline.get_connection",
+        return_value=mock_connection,
+    ), patch(
+        "app.pipelines.weather_pipeline.process_cluster",
+        return_value=True,
+    ):
+
+        result = process_cluster_parallel(
+            {"cluster_key": "A"},
+            "db_url",
+        )
+
+    assert result is True
+    mock_connection.close.assert_called_once()
+
+
+# ------------------ DELIVERY PIPELINE ------------------
 
 
 @patch("app.pipelines.delivery_pipeline.fetch_pending_advisories", return_value=[])

@@ -1,0 +1,513 @@
+# =====================================================
+# WEATHER ADVISORY RULES
+# =====================================================
+#
+# Rules are evaluated in descending priority order.
+#
+# Supported Operators:
+#
+# >
+# >=
+# <
+# <=
+# ==
+# !=
+#
+# =====================================================
+
+rules:
+
+  # ===================================================
+  # CURRENT WEATHER
+  # ===================================================
+
+  - id: CUR001
+
+    enabled: true
+
+    category: current_weather
+
+    name: Current heavy rain
+
+    priority: 200
+
+    condition_type: all
+
+    conditions:
+
+      - metric: current.rain
+        operator: ">="
+        value: 5
+
+    suppresses: []
+
+    message: >
+      Rain is currently occurring. Avoid field operations until conditions improve.
+
+
+  - id: CUR002
+
+    enabled: true
+
+    category: current_weather
+
+    name: Current strong wind
+
+    priority: 190
+
+    condition_type: all
+
+    conditions:
+
+      - metric: current.wind
+        operator: ">="
+        value: 25
+
+    suppresses: []
+
+    message: >
+      Strong winds are occurring currently. Avoid pesticide spraying.
+
+
+  - id: CUR003
+
+    enabled: true
+
+    category: current_weather
+
+    name: Current high temperature
+
+    priority: 180
+
+    condition_type: all
+
+    conditions:
+
+      - metric: current.temp
+        operator: ">="
+        value: 38
+
+    suppresses: []
+
+    message: >
+      High temperatures are currently being experienced. Ensure adequate irrigation.
+
+
+  - id: CUR004
+
+    enabled: true
+
+    category: current_weather
+
+    name: Current heat stress
+
+    priority: 185
+
+    condition_type: all
+
+    conditions:
+
+      - metric: current.feels_like
+        operator: ">="
+        value: 40
+
+    suppresses: []
+
+    message: >
+      Heat stress conditions are currently present. Avoid stressful field operations.
+
+
+  - id: CUR005
+
+    enabled: true
+
+    category: current_weather
+
+    name: Current high humidity
+
+    priority: 170
+
+    condition_type: all
+
+    conditions:
+
+      - metric: current.humidity
+        operator: ">="
+        value: 85
+
+    suppresses: []
+
+    message: >
+      Humidity is currently high. Monitor crops for disease development.
+
+
+  # ===================================================
+  # TODAY FORECAST
+  # ===================================================
+
+  - id: TD001
+
+    enabled: true
+
+    category: rain
+
+    name: Heavy rain expected today
+
+    priority: 160
+
+    condition_type: any
+
+    conditions:
+
+      - metric: today.rain_probability
+        operator: ">="
+        value: 70
+
+      - metric: today.rainfall
+        operator: ">="
+        value: 5
+
+    suppresses:
+      - TD004
+      - TD002
+
+    message: >
+      Heavy rain expected today. Ensure proper drainage and avoid irrigation.
+      Expected rain window: {today.rain_windows}.
+
+
+  - id: TD002
+
+    enabled: true
+
+    category: rain
+
+    name: Moderate rain expected today
+
+    priority: 150
+
+    condition_type: any
+
+    conditions:
+
+      - metric: today.rain_probability
+        operator: ">="
+        value: 40
+
+      - metric: today.rainfall
+        operator: ">="
+        value: 2
+
+    suppresses: []
+
+    message: >
+      Moderate rainfall possible today. Monitor field conditions before irrigation.
+      Expected rain window: {today.rain_windows}.
+
+
+  - id: TD003
+
+    enabled: true
+
+    category: wind
+
+    name: Strong wind expected today
+
+    priority: 140
+
+    condition_type: all
+
+    conditions:
+
+      - metric: today.max_wind
+        operator: ">="
+        value: 25
+
+    suppresses: []
+
+    message: >
+      Strong winds expected today. Avoid pesticide spraying.
+      Peak winds expected around {today.max_wind_time}.
+
+
+  - id: TD004
+
+    enabled: true
+
+    category: temperature
+
+    name: High temperature expected today
+
+    priority: 130
+
+    condition_type: all
+
+    conditions:
+
+      - metric: today.max_temp
+        operator: ">="
+        value: 38
+
+    suppresses: []
+
+    message: >
+      High temperatures expected today. Ensure adequate irrigation.
+      Maximum temperature expected around {today.max_temp_time}.
+
+
+  - id: TD005
+
+    enabled: true
+
+    category: humidity
+
+    name: High humidity expected today
+
+    priority: 120
+
+    condition_type: all
+
+    conditions:
+
+      - metric: today.max_humidity
+        operator: ">="
+        value: 85
+
+    suppresses: []
+
+    message: >
+      High humidity expected today. Monitor crops for fungal disease symptoms.
+      Peak humidity expected around {today.max_humidity_time}.
+
+
+  # ===================================================
+  # TOMORROW FORECAST
+  # ===================================================
+
+  - id: TM001
+
+    enabled: true
+
+    category: tomorrow_rain
+
+    name: Heavy rain expected tomorrow
+
+    priority: 110
+
+    condition_type: all
+
+    conditions:
+
+      - metric: tomorrow.rain_probability
+        operator: ">="
+        value: 70
+
+      - metric: tomorrow.rainfall
+        operator: ">="
+        value: 2
+
+    suppresses: []
+
+    message: >
+      Heavy rainfall is expected tomorrow. Plan irrigation and field activities accordingly.
+      Expected rain window: {tomorrow.rain_windows}.
+
+
+  - id: TM002
+
+    enabled: true
+
+    category: tomorrow_temperature
+
+    name: High temperature tomorrow
+
+    priority: 100
+
+    condition_type: all
+
+    conditions:
+
+      - metric: tomorrow.max_temp
+        operator: ">="
+        value: 38
+
+    suppresses: []
+
+    message: >
+      High temperatures are expected tomorrow. Prepare irrigation arrangements in advance.
+      Maximum temperature expected around {tomorrow.max_temp_time}.
+
+
+  - id: TM003
+
+    enabled: true
+
+    category: tomorrow_wind
+
+    name: Strong wind tomorrow
+
+    priority: 95
+
+    condition_type: all
+
+    conditions:
+
+      - metric: tomorrow.max_wind
+        operator: ">="
+        value: 25
+
+    suppresses: []
+
+    message: >
+      Strong winds are expected tomorrow. Plan spraying activities accordingly.
+      Peak winds expected around {tomorrow.max_wind_time}.
+
+
+  - id: TM004
+
+    enabled: true
+
+    category: tomorrow_humidity
+
+    name: High humidity tomorrow
+
+    priority: 90
+
+    condition_type: all
+
+    conditions:
+
+      - metric: tomorrow.max_humidity
+        operator: ">="
+        value: 85
+
+    suppresses: []
+
+    message: >
+      High humidity is expected tomorrow. Monitor crops for fungal disease symptoms.
+      Peak humidity expected around {tomorrow.max_humidity_time}.
+
+
+  # ===================================================
+  # DAY 3 FORECAST
+  # ===================================================
+
+  - id: D3001
+
+    enabled: true
+
+    category: future_rain
+
+    name: Rain likely later this week
+
+    priority: 80
+
+    condition_type: all
+
+    conditions:
+
+      - metric: day3.rain_probability
+        operator: ">="
+        value: 60
+
+    suppresses: []
+
+    message: >
+      Rainfall is expected later this week. Plan field operations accordingly.
+
+
+  - id: D3002
+
+    enabled: true
+
+    category: future_dry
+
+    name: Dry weather later this week
+
+    priority: 70
+
+    condition_type: all
+
+    conditions:
+
+      - metric: day3.rain_probability
+        operator: "<="
+        value: 20
+
+    suppresses: []
+
+    message: >
+      Dry weather is expected later this week. Plan irrigation accordingly.
+
+
+  - id: D3003
+
+    enabled: true
+
+    category: future_temperature
+
+    name: High temperature later this week
+
+    priority: 75
+
+    condition_type: all
+
+    conditions:
+
+      - metric: day3.max_temp
+        operator: ">="
+        value: 38
+
+    suppresses: []
+
+    message: >
+      High temperatures are expected later this week. Plan irrigation accordingly.
+
+
+  - id: D3004
+
+    enabled: true
+
+    category: future_wind
+
+    name: Strong wind later this week
+
+    priority: 74
+
+    condition_type: all
+
+    conditions:
+
+      - metric: day3.max_wind
+        operator: ">="
+        value: 25
+
+    suppresses: []
+
+    message: >
+      Strong winds are expected later this week. Plan spraying activities accordingly.
+
+
+  - id: D3005
+
+    enabled: true
+
+    category: future_humidity
+
+    name: High humidity later this week
+
+    priority: 73
+
+    condition_type: all
+
+    conditions:
+
+      - metric: day3.humidity
+        operator: ">="
+        value: 85
+
+    suppresses: []
+
+    message: >
+      High humidity is expected later this week.
+      Monitor crops for fungal disease symptoms.

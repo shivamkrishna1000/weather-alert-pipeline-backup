@@ -1,6 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from app.config import get_database_url
+from app.config import get_database_url, get_pilot_villages, is_pilot_mode
 from app.database import get_connection
 from app.repositories.advisory_repo import advisory_already_sent, insert_advisory_log
 from app.repositories.weather_repo import (
@@ -11,7 +11,8 @@ from app.repositories.weather_repo import (
     upsert_weather_cache,
 )
 from app.services.advisory_service import generate_advisories
-from app.services.weather_service import get_weather
+from app.services.cluster_service import clean_name
+from app.services.weather_service import build_weather_payload
 
 
 def run_weather_pipeline(connection) -> None:
@@ -27,6 +28,7 @@ def run_weather_pipeline(connection) -> None:
     None
     """
     clusters = fetch_clusters(connection)
+    clusters = filter_pilot_clusters(clusters)
 
     if not clusters:
         print("No clusters available. Skipping weather pipeline.")
@@ -66,6 +68,50 @@ def run_weather_pipeline(connection) -> None:
     print(f"Skipped (cache): {skipped}")
 
 
+def filter_pilot_clusters(clusters: list[dict]) -> list[dict]:
+    """
+    Filter clusters using village names.
+
+    Parameters
+    ----------
+    clusters : list[dict]
+
+    Returns
+    -------
+    list[dict]
+    """
+    if not is_pilot_mode():
+        return clusters
+
+    allowed_villages = get_pilot_villages()
+
+    if not allowed_villages:
+
+        print("Pilot mode enabled " "but no villages configured.")
+
+        return []
+
+    filtered = []
+
+    for cluster in clusters:
+
+        villages = set()
+
+        for member in cluster["members"]:
+
+            village = clean_name(member.get("village"))
+
+            if village:
+                villages.add(village.upper())
+
+        if villages & allowed_villages:
+            filtered.append(cluster)
+
+    print(f"Pilot mode active. " f"Using {len(filtered)} clusters.")
+
+    return filtered
+
+
 def should_skip_cluster(connection, cluster_key: str) -> bool:
     """
     Determine whether weather fetch should be skipped due to fresh cache.
@@ -88,9 +134,36 @@ def should_skip_cluster(connection, cluster_key: str) -> bool:
     return False
 
 
+def build_advisory_weather(payload: dict) -> dict:
+    """
+    Build temporary advisory metrics.
+
+    Parameters
+    ----------
+    payload : dict
+
+    Returns
+    -------
+    dict
+    """
+    today = payload["today_forecast"]
+
+    rain_windows = today["rain_windows"]
+
+    return {
+        "max_temp": today["max_temp"]["value"],
+        "min_temp": today["min_temp"]["value"],
+        "max_rain": today["rain_mm"],
+        "rain_probability": today["rain_probability"],
+        "rain_hours": len(rain_windows),
+        "max_humidity": today["max_humidity"]["value"],
+        "max_wind": today["max_wind"]["value"],
+    }
+
+
 def fetch_and_prepare_weather(cluster: dict) -> dict:
     """
-    Fetch weather data and enrich cluster with features and advisories.
+    Fetch and prepare weather payload.
 
     Parameters
     ----------
@@ -99,46 +172,53 @@ def fetch_and_prepare_weather(cluster: dict) -> dict:
     Returns
     -------
     dict
-        Enriched cluster with weather + advisories
     """
-    print(f"Fetching weather: {cluster['cluster_key']}")
+    print(f"Fetching weather: " f"{cluster['cluster_key']}")
 
-    weather = get_weather(cluster["latitude"], cluster["longitude"])
+    payload = build_weather_payload(cluster["latitude"], cluster["longitude"])
 
-    advisories = generate_advisories(weather)
+    advisories = generate_advisories(payload)
 
-    enriched = {**cluster, **weather, "advisories": advisories}
-
-    print(f"Advisories for {cluster['cluster_key']}: {advisories}")
-
-    return enriched
+    return {
+        **cluster,
+        **payload,
+        "advisories": advisories,
+    }
 
 
 def generate_and_store_advisories(
-    connection, cluster: dict, advisories: list[str]
+    connection, cluster: dict, advisory_message: str
 ) -> None:
     """
-    Generate and persist advisory logs for all greenhouses in a cluster.
+    Store one formatted advisory message per greenhouse.
 
     Parameters
     ----------
     connection : Any
-    cluster_key : str
-    advisories : list[str]
+    cluster : dict
+    advisory_message : str
 
     Returns
     -------
     None
     """
     cluster_key = cluster["cluster_key"]
-    greenhouses = cluster["members"]
 
-    for gh in greenhouses:
-        for advisory in advisories:
-            if advisory_already_sent(connection, gh["id"], advisory):
-                continue
+    for gh in cluster["members"]:
 
-            insert_advisory_log(connection, gh, cluster_key, advisory)
+        if advisory_already_sent(
+            connection,
+            gh["id"],
+            advisory_message,
+        ):
+            continue
+
+        insert_advisory_log(
+            connection,
+            gh,
+            cluster_key,
+            advisory_message,
+        )
 
 
 def update_weather_storage(connection, cluster: dict) -> None:

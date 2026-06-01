@@ -1,0 +1,152 @@
+# =====================================================
+# WEATHER PAYLOAD SCHEMA
+# =====================================================
+#
+# This file defines all weather metrics available
+# for advisory rule evaluation.
+#
+# =====================================================
+
+weather:
+
+  current:
+
+    temp:
+      type: float
+      unit: celsius
+
+    feels_like:
+      type: float
+      unit: celsius
+
+    humidity:
+      type: float
+      unit: percent
+
+    wind:
+      type: float
+      unit: kmph
+
+    rain:
+      type: float
+      unit: mm
+
+
+  today:
+
+    summary:
+      type: string
+
+    max_temp:
+      type: float
+      unit: celsius
+
+    max_temp_time:
+      type: string
+
+    min_temp:
+      type: float
+      unit: celsius
+
+    min_temp_time:
+      type: string
+
+    max_humidity:
+      type: float
+      unit: percent
+
+    max_humidity_time:
+      type: string
+
+    max_wind:
+      type: float
+      unit: kmph
+
+    max_wind_time:
+      type: string
+
+    rain_probability:
+      type: float
+      unit: percent
+
+    rainfall:
+      type: float
+      unit: mm
+
+    rain_windows:
+      type: list
+
+
+  tomorrow:
+
+    summary:
+      type: string
+
+    max_temp:
+      type: float
+      unit: celsius
+
+    max_temp_time:
+      type: string
+
+    min_temp:
+      type: float
+      unit: celsius
+
+    min_temp_time:
+      type: string
+
+    max_humidity:
+      type: float
+      unit: percent
+
+    max_humidity_time:
+      type: string
+
+    max_wind:
+      type: float
+      unit: kmph
+
+    max_wind_time:
+      type: string
+
+    rain_probability:
+      type: float
+      unit: percent
+
+    rainfall:
+      type: float
+      unit: mm
+
+    rain_windows:
+      type: list
+
+
+  day3:
+
+    summary:
+      type: string
+
+    max_temp:
+      type: float
+      unit: celsius
+
+    min_temp:
+      type: float
+      unit: celsius
+
+    humidity:
+      type: float
+      unit: percent
+
+    max_wind:
+      type: float
+      unit: kmph
+
+    rain_probability:
+      type: float
+      unit: percent
+
+    rainfall:
+      type: float
+      unit: mm

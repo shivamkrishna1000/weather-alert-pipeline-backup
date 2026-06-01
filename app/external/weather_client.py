@@ -1,14 +1,23 @@
+"""
+OpenWeather API client.
+
+Handles:
+- Forecast fetching from OpenWeather One Call API
+- Timestamp conversion
+- Basic response validation
+"""
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import requests
 
-from app.config import get_weather_api_key
+from app.config import get_openweather_api_key
 
 
 def fetch_weather_raw(latitude: float, longitude: float) -> dict:
     """
-    Fetch raw weather forecast data from WeatherAPI.
-
-    Sends a request to the external WeatherAPI service and validates
-    the response structure.
+    Fetch raw forecast data from OpenWeather.
 
     Parameters
     ----------
@@ -18,37 +27,92 @@ def fetch_weather_raw(latitude: float, longitude: float) -> dict:
     Returns
     -------
     dict
-        Raw JSON response containing forecast and current weather data.
+        Raw OpenWeather API response.
 
     Raises
     ------
     RuntimeError
-        If API request fails, response is invalid, or required fields are missing.
+        If API request or response validation fails.
     """
-    api_key = get_weather_api_key()
+    api_key = get_openweather_api_key()
 
-    url = "https://api.weatherapi.com/v1/forecast.json"
+    url = "https://api.openweathermap.org/data/3.0/onecall"
 
     params = {
-        "key": api_key,
-        "q": f"{latitude},{longitude}",
-        "days": 1,
-        "aqi": "no",
-        "alerts": "no",
+        "lat": latitude,
+        "lon": longitude,
+        "appid": api_key,
+        "units": "metric",
+        "exclude": "minutely,alerts",
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(
+            url,
+            params=params,
+            timeout=15,
+        )
+
         response.raise_for_status()
+
     except requests.exceptions.RequestException as e:
-        raise RuntimeError("Weather API request failed") from e
+        raise RuntimeError("OpenWeather API request failed") from e
 
     try:
         data = response.json()
-    except ValueError:
-        raise RuntimeError("Invalid JSON from Weather API")
 
-    if "current" not in data:
-        raise RuntimeError("Invalid Weather API response structure")
+    except ValueError as e:
+        raise RuntimeError("Invalid JSON from OpenWeather") from e
+
+    validate_weather_response(data)
 
     return data
+
+
+def validate_weather_response(data: dict) -> None:
+    """
+    Validate required OpenWeather fields.
+
+    Parameters
+    ----------
+    data : dict
+
+    Raises
+    ------
+    RuntimeError
+        If required fields are missing.
+    """
+    required = [
+        "current",
+        "hourly",
+        "daily",
+        "timezone",
+    ]
+
+    for field in required:
+        if field not in data:
+            raise RuntimeError(f"Missing OpenWeather field: {field}")
+
+
+def convert_timestamp(
+    timestamp: int,
+    timezone_name: str,
+) -> datetime:
+    """
+    Convert UNIX timestamp into timezone-aware datetime.
+
+    Parameters
+    ----------
+    timestamp : int
+    timezone_name : str
+
+    Returns
+    -------
+    datetime
+    """
+    timezone = ZoneInfo(timezone_name)
+
+    return datetime.fromtimestamp(
+        timestamp,
+        timezone,
+    )

@@ -227,15 +227,22 @@ def test_is_cache_fresh():
 def test_get_cached_weather():
 
     mock_cursor = MagicMock()
-    mock_cursor.fetchone.return_value = (30, 20, 5, 80, 3, 60, 15, "time")
+
+    mock_cursor.fetchone.return_value = (
+        {"temp": 30},
+        {"summary": "Sunny"},
+        {"summary": "Cloudy"},
+        {"summary": "Dry"},
+        "time",
+    )
 
     connection = MagicMock()
     connection.cursor.return_value = mock_cursor
 
     result = get_cached_weather(connection, "A")
 
-    assert result["max_temp"] == 30
-    assert result["rain_hours"] == 3
+    assert result["current_weather"]["temp"] == 30
+    assert result["today_forecast"]["summary"] == "Sunny"
 
 
 def test_fetch_clusters():
@@ -280,23 +287,25 @@ def test_fetch_clusters():
     ]
 
 
+def build_weather_cluster():
+
+    return {
+        "cluster_key": "A",
+        "latitude": 1,
+        "longitude": 2,
+        "current_weather": {"temp": 30},
+        "today_forecast": {"summary": "Sunny"},
+        "tomorrow_forecast": {"summary": "Cloudy"},
+        "day3_forecast": {"summary": "Dry"},
+    }
+
+
 def test_upsert_weather_cache():
 
     connection = MagicMock()
     connection.cursor.return_value = MagicMock()
 
-    cluster = {
-        "cluster_key": "A",
-        "latitude": 1,
-        "longitude": 2,
-        "max_temp": 30,
-        "min_temp": 20,
-        "max_rain": 5,
-        "rain_probability": 80,
-        "rain_hours": 3,
-        "max_humidity": 60,
-        "max_wind": 15,
-    }
+    cluster = build_weather_cluster()
 
     upsert_weather_cache(connection, cluster)
 
@@ -310,18 +319,7 @@ def test_insert_weather_history():
     connection = MagicMock()
     connection.cursor.return_value = MagicMock()
 
-    cluster = {
-        "cluster_key": "A",
-        "latitude": 1,
-        "longitude": 2,
-        "max_temp": 30,
-        "min_temp": 20,
-        "max_rain": 5,
-        "rain_probability": 80,
-        "rain_hours": 3,
-        "max_humidity": 60,
-        "max_wind": 15,
-    }
+    cluster = build_weather_cluster()
 
     insert_weather_history(connection, cluster)
 
@@ -340,6 +338,66 @@ def test_get_cached_weather_none():
     result = get_cached_weather(connection, "A")
 
     assert result is None
+
+
+def test_fetch_clusters_no_records():
+
+    from app.repositories.weather_repo import fetch_clusters
+
+    connection = MagicMock()
+
+    with patch(
+        "app.repositories.weather_repo.fetch_greenhouse_records",
+        return_value=[],
+    ):
+
+        result = fetch_clusters(connection)
+
+    assert result == []
+
+
+def test_aggregate_clusters():
+
+    from app.repositories.weather_repo import aggregate_clusters
+
+    records = [
+        {
+            "latitude": 10,
+            "longitude": 20,
+        },
+        {
+            "latitude": 12,
+            "longitude": 22,
+        },
+    ]
+
+    with patch(
+        "app.repositories.weather_repo.build_cluster_key",
+        return_value="CLUSTER_A",
+    ):
+
+        result = aggregate_clusters(records)
+
+    assert len(result) == 1
+    assert result[0]["cluster_key"] == "CLUSTER_A"
+    assert result[0]["latitude"] == 11
+    assert result[0]["longitude"] == 21
+
+
+def test_aggregate_clusters_skips_invalid_keys():
+
+    from app.repositories.weather_repo import aggregate_clusters
+
+    result = aggregate_clusters(
+        [
+            {
+                "latitude": 10,
+                "longitude": 20,
+            }
+        ]
+    )
+
+    assert result == []
 
 
 # ------------------ ADVISORY REPO ------------------
@@ -394,3 +452,72 @@ def test_insert_advisory_log():
     assert mock_cursor.execute.called
     assert connection.commit.called
     mock_cursor.close.assert_called_once()
+
+
+def test_fetch_pending_advisories_returns_records():
+
+    mock_cursor = MagicMock()
+
+    mock_cursor.description = [
+        ("id",),
+        ("greenhouse_id",),
+        ("greenhouse_name",),
+        ("farmer_name",),
+        ("phone",),
+        ("advisory",),
+    ]
+
+    mock_cursor.fetchall.return_value = [
+        (
+            1,
+            "GH1",
+            "Greenhouse",
+            "Ravi",
+            "9999999999",
+            "Rain alert",
+        )
+    ]
+
+    connection = MagicMock()
+    connection.cursor.return_value = mock_cursor
+
+    from app.repositories.advisory_repo import fetch_pending_advisories
+
+    result = fetch_pending_advisories(connection)
+
+    assert len(result) == 1
+    assert result[0]["id"] == 1
+
+    mock_cursor.close.assert_called_once()
+
+
+def test_mark_advisories_as_sent_updates_records():
+
+    connection = MagicMock()
+
+    from app.repositories.advisory_repo import mark_advisories_as_sent
+
+    mark_advisories_as_sent(
+        connection,
+        [1, 2, 3],
+    )
+
+    cursor = connection.cursor.return_value
+
+    assert cursor.execute.called
+    assert connection.commit.called
+    cursor.close.assert_called_once()
+
+
+def test_mark_advisories_as_sent_empty_ids():
+
+    connection = MagicMock()
+
+    from app.repositories.advisory_repo import mark_advisories_as_sent
+
+    mark_advisories_as_sent(
+        connection,
+        [],
+    )
+
+    assert not connection.cursor.called

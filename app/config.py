@@ -78,11 +78,11 @@ def get_test_database_url() -> str:
     return url
 
 
-def get_weather_api_key() -> str:
-    """Return Weather API key."""
-    key = os.environ.get("WEATHER_API_KEY")
+def get_openweather_api_key() -> str:
+    """Return OpenWeather API key."""
+    key = os.environ.get("OPENWEATHER_API_KEY")
     if not key:
-        raise ValueError("WEATHER_API_KEY is not set")
+        raise ValueError("OPENWEATHER_API_KEY is not set")
     return key
 
 
@@ -92,6 +92,20 @@ def get_cluster_mode() -> str:
     if val not in {"taluk", "village", "distance"}:
         raise ValueError("Invalid CLUSTER_MODE")
     return val
+
+
+def is_pilot_mode() -> bool:
+    """Return pilot mode flag."""
+    val = os.environ.get("PILOT_MODE", "false").lower()
+    return val == "true"
+
+
+def get_pilot_villages() -> set[str]:
+    """Return configured pilot villages."""
+    raw = os.environ.get("PILOT_VILLAGES", "")
+    if not raw.strip():
+        return set()
+    return {item.strip().upper() for item in raw.split(",") if item.strip()}
 
 
 def get_wati_base_url() -> str:

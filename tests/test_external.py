@@ -135,14 +135,16 @@ def test_fetch_weather_success():
 
     mock_response = MagicMock()
     mock_response.json.return_value = {
-        "current": {"temp_c": 30},
-        "forecast": {"forecastday": [{"hour": []}]},
+        "current": {},
+        "hourly": [],
+        "daily": [],
+        "timezone": "Asia/Kolkata",
     }
     mock_response.raise_for_status.return_value = None
 
     with patch(
         "app.external.weather_client.requests.get", return_value=mock_response
-    ), patch("app.external.weather_client.get_weather_api_key", return_value="key"):
+    ), patch("app.external.weather_client.get_openweather_api_key", return_value="key"):
 
         result = fetch_weather_raw(1, 2)
 
@@ -154,7 +156,7 @@ def test_fetch_weather_request_failure():
     with patch(
         "app.external.weather_client.requests.get",
         side_effect=requests.exceptions.RequestException,
-    ), patch("app.external.weather_client.get_weather_api_key", return_value="key"):
+    ), patch("app.external.weather_client.get_openweather_api_key", return_value="key"):
 
         with pytest.raises(RuntimeError):
             fetch_weather_raw(1, 2)
@@ -168,7 +170,7 @@ def test_fetch_weather_invalid_json():
 
     with patch(
         "app.external.weather_client.requests.get", return_value=mock_response
-    ), patch("app.external.weather_client.get_weather_api_key", return_value="key"):
+    ), patch("app.external.weather_client.get_openweather_api_key", return_value="key"):
 
         with pytest.raises(RuntimeError):
             fetch_weather_raw(1, 2)
@@ -182,7 +184,7 @@ def test_fetch_weather_missing_current():
 
     with patch(
         "app.external.weather_client.requests.get", return_value=mock_response
-    ), patch("app.external.weather_client.get_weather_api_key", return_value="key"):
+    ), patch("app.external.weather_client.get_openweather_api_key", return_value="key"):
 
         with pytest.raises(RuntimeError):
             fetch_weather_raw(1, 2)

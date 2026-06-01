@@ -6,8 +6,8 @@ from app.config import (
     get_cluster_mode,
     get_database_url,
     get_google_maps_api_key,
+    get_openweather_api_key,
     get_test_database_url,
-    get_weather_api_key,
     get_zoho_accounts_url,
     get_zoho_api_base,
     get_zoho_client_id,
@@ -76,11 +76,11 @@ def test_get_zoho_module_default():
         assert get_zoho_module() == "Greenhouse"
 
 
-def test_get_weather_api_key_missing():
+def test_get_openweather_api_key_missing():
 
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(ValueError):
-            get_weather_api_key()
+            get_openweather_api_key()
 
 
 def test_get_cluster_mode_invalid():
