@@ -152,7 +152,7 @@ def create_tables(connection) -> None:
             phone TEXT,
 
             cluster_key TEXT,
-            advisory TEXT,
+            advisory JSONB,
 
             advisory_date DATE,
 

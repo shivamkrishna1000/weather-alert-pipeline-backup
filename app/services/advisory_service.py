@@ -31,23 +31,6 @@ def load_advisory_rules() -> list[dict]:
     return config["rules"]
 
 
-def load_weather_schema() -> dict:
-    """
-    Load weather schema from YAML.
-
-    Returns
-    -------
-    dict
-        Weather schema definition.
-    """
-    path = CONFIG_DIR / "weather_schema.yaml"
-
-    with open(path, "r", encoding="utf-8") as file:
-        config = yaml.safe_load(file)
-
-    return config["weather"]
-
-
 def get_nested_value(data: dict, path: str):
     """
     Fetch nested value using dot notation.
@@ -262,16 +245,16 @@ def evaluate_rules(weather: dict) -> list[dict]:
     return advisories
 
 
-def format_advisories(advisories: list[dict]) -> str:
+def format_advisories(advisories: list[dict]) -> dict:
     """
-    Format advisories into a WhatsApp-friendly message.
+    Format advisories into sections for WhatsApp template delivery.
 
     Rules are grouped by rule ID prefix:
 
-    CUR  -> Current Weather
-    TD   -> Today
-    TM   -> Tomorrow
-    D3   -> Day 3 Outlook
+    CUR  -> Current Conditions
+    TD   -> Today's Advisory
+    TM   -> Tomorrow's Advisory
+    D3   -> Coming Days
 
     Parameters
     ----------
@@ -279,12 +262,15 @@ def format_advisories(advisories: list[dict]) -> str:
 
     Returns
     -------
-    str
+    dict
+        Dictionary containing formatted advisory sections.
     """
-    current_items = []
-    today_items = []
-    tomorrow_items = []
-    day3_items = []
+    sections = {
+        "current": [],
+        "today": [],
+        "tomorrow": [],
+        "day3": [],
+    }
 
     for advisory in advisories:
 
@@ -293,52 +279,23 @@ def format_advisories(advisories: list[dict]) -> str:
         message = advisory["message"].strip()
 
         if rule_id.startswith("CUR"):
-            current_items.append(message)
+            sections["current"].append(message)
 
         elif rule_id.startswith("TD"):
-            today_items.append(message)
+            sections["today"].append(message)
 
         elif rule_id.startswith("TM"):
-            tomorrow_items.append(message)
+            sections["tomorrow"].append(message)
 
         elif rule_id.startswith("D3"):
-            day3_items.append(message)
+            sections["day3"].append(message)
 
-    lines = []
-
-    if current_items:
-        lines.append("*CURRENT WEATHER*")
-
-        for item in current_items:
-            lines.append(f"• {item}")
-
-        lines.append("")
-
-    if today_items:
-        lines.append("*TODAY*")
-
-        for item in today_items:
-            lines.append(f"• {item}")
-
-        lines.append("")
-
-    if tomorrow_items:
-        lines.append("*TOMORROW*")
-
-        for item in tomorrow_items:
-            lines.append(f"• {item}")
-
-        lines.append("")
-
-    if day3_items:
-        lines.append("*DAY 3 OUTLOOK*")
-
-        for item in day3_items:
-            lines.append(f"• {item}")
-
-        lines.append("")
-
-    return "\n".join(lines).strip()
+    return {
+        "current": " ".join(sections["current"]),
+        "today": " ".join(sections["today"]),
+        "tomorrow": " ".join(sections["tomorrow"]),
+        "day3": " ".join(sections["day3"]),
+    }
 
 
 def build_rule_weather(payload: dict) -> dict:

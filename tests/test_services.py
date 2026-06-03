@@ -6,8 +6,8 @@ from app.constants import ZOHO_FIELDS
 from app.services.advisory_service import generate_advisories
 from app.services.cluster_service import build_cluster_key, build_distance_clusters
 from app.services.delivery_service import (
-    format_greenhouse_message,
     group_advisories_by_farmer,
+    split_advisory_sections,
 )
 from app.services.geocode_service import should_retry
 from app.services.greenhouse_service import process_greenhouse_records
@@ -290,6 +290,15 @@ def test_build_cluster_key_taluk_mode():
 # ------------------ WATI SERVICE ------------------
 
 
+SECTIONS = {
+    "greenhouse": "GH1",
+    "current": "Current alert",
+    "today": "Today alert",
+    "tomorrow": "Tomorrow alert",
+    "day3": "Day3 alert",
+}
+
+
 @patch("app.services.wati_service.is_debug_mode", return_value=True)
 def test_send_whatsapp_debug_mode(mock_debug):
     result = send_whatsapp_message("919999999999", "Ravi", "Test message")
@@ -312,7 +321,7 @@ def test_send_whatsapp_success(
 
     mock_post.return_value = mock_response
 
-    result = send_whatsapp_message("919999999999", "Ravi", "Hello")
+    result = send_whatsapp_message("919999999999", "Ravi", SECTIONS)
 
     assert result is True
 
@@ -328,7 +337,7 @@ def test_send_whatsapp_success(
 def test_send_whatsapp_api_failure(
     mock_post, mock_url, mock_token, mock_template, mock_debug
 ):
-    result = send_whatsapp_message("919999999999", "Ravi", "Hello")
+    result = send_whatsapp_message("919999999999", "Ravi", SECTIONS)
 
     assert result is False
 
@@ -348,7 +357,7 @@ def test_send_whatsapp_invalid_json(
 
     mock_post.return_value = mock_response
 
-    result = send_whatsapp_message("919999999999", "Ravi", "Hello")
+    result = send_whatsapp_message("919999999999", "Ravi", SECTIONS)
 
     assert result is False
 
@@ -368,7 +377,7 @@ def test_send_whatsapp_result_false(
 
     mock_post.return_value = mock_response
 
-    result = send_whatsapp_message("919999999999", "Ravi", "Hello")
+    result = send_whatsapp_message("919999999999", "Ravi", SECTIONS)
 
     assert result is False
 
@@ -397,7 +406,7 @@ def test_group_advisories():
     result = group_advisories_by_farmer(records)
 
     assert "999" in result
-    assert len(result["999"]["greenhouses"]["GH1"]) == 2
+    assert len(result["999"]["advisories"]) == 2
 
 
 def test_group_advisories_skip_invalid():
@@ -416,12 +425,26 @@ def test_group_advisories_skip_invalid():
     assert result == {}
 
 
-def test_format_message():
-    result = format_greenhouse_message("GH1", ["Rain", "Wind"])
+def test_split_advisory_sections():
 
-    assert "GH1" in result
-    assert "Rain" in result
-    assert "Wind" in result
+    advisory = {
+        "greenhouse": "GH1",
+        "current": "Current alert",
+        "today": "Today alert",
+        "tomorrow": "Tomorrow alert",
+        "day3": "Day3 alert",
+    }
+
+    result = split_advisory_sections(
+        "GH1",
+        [advisory],
+    )
+
+    assert result["greenhouse"] == "GH1"
+    assert result["current"] == "Current alert"
+    assert result["today"] == "Today alert"
+    assert result["tomorrow"] == "Tomorrow alert"
+    assert result["day3"] == "Day3 alert"
 
 
 # ------------------ ADVISORY SERVICE ------------------
@@ -507,7 +530,7 @@ def test_heavy_rain_advisory_triggers():
 
     result = generate_advisories(payload)
 
-    assert "Heavy rain expected today" in result
+    assert "Heavy rain expected today" in result["today"]
 
 
 def test_wind_advisory_triggers():
@@ -518,7 +541,7 @@ def test_wind_advisory_triggers():
 
     result = generate_advisories(payload)
 
-    assert "Strong winds expected today" in result
+    assert "Strong winds expected today" in result["today"]
 
 
 def test_humidity_advisory_triggers():
@@ -529,7 +552,7 @@ def test_humidity_advisory_triggers():
 
     result = generate_advisories(payload)
 
-    assert "High humidity expected today" in result
+    assert "High humidity expected today" in result["today"]
 
 
 def test_rain_suppresses_moderate_rain():
@@ -541,5 +564,5 @@ def test_rain_suppresses_moderate_rain():
 
     result = generate_advisories(payload)
 
-    assert "Heavy rain expected today" in result
-    assert "Moderate rainfall possible today" not in result
+    assert "Heavy rain expected today" in result["today"]
+    assert "Moderate rainfall possible today" not in result["today"]

@@ -8,7 +8,28 @@ from app.config import (
 )
 
 
-def send_whatsapp_message(phone: str, farmer_name: str, message: str) -> bool:
+def normalize_phone(phone: str) -> str:
+    """
+    Convert Indian mobile numbers to WATI format.
+
+    Examples
+    --------
+    9876543210 -> 919876543210
+    919876543210 -> 919876543210
+    +919876543210 -> 919876543210
+    """
+    phone = phone.strip().replace(" ", "")
+
+    if phone.startswith("+"):
+        phone = phone[1:]
+
+    if len(phone) == 10:
+        return f"91{phone}"
+
+    return phone
+
+
+def send_whatsapp_message(phone: str, farmer_name: str, sections: dict) -> bool:
     """
     Send WhatsApp template message via WATI.
 
@@ -23,14 +44,21 @@ def send_whatsapp_message(phone: str, farmer_name: str, message: str) -> bool:
         Farmer phone number (must include country code, e.g., 91XXXXXXXXXX)
     farmer_name : str
         Name of the farmer (mapped to template variable {{1}})
-    message : str
-        Formatted advisory message block (mapped to template variable {{2}})
-
+    sections : dict
+        Advisory sections mapped to WhatsApp template variables.
+        {
+            "greenhouse": str,
+            "current": str,
+            "today": str,
+            "tomorrow": str,
+            "day3": str,
+        }
     Returns
     -------
     bool
         True if message sent successfully, False otherwise.
     """
+    phone = normalize_phone(phone)
 
     # -------- DEBUG MODE --------
     if is_debug_mode():
@@ -38,7 +66,7 @@ def send_whatsapp_message(phone: str, farmer_name: str, message: str) -> bool:
         print(f"Phone: {phone}")
         print(f"Farmer: {farmer_name}")
         print("Message:")
-        print(message)
+        print(sections)
         print("-" * 50)
         return False  # Important: treat as NOT sent
 
@@ -59,9 +87,17 @@ def send_whatsapp_message(phone: str, farmer_name: str, message: str) -> bool:
         "broadcast_name": "weather_alert",
         "parameters": [
             {"name": "1", "value": farmer_name},
-            {"name": "2", "value": message},
+            {"name": "2", "value": sections["greenhouse"]},
+            {"name": "3", "value": sections["current"]},
+            {"name": "4", "value": sections["today"]},
+            {"name": "5", "value": sections["tomorrow"]},
+            {"name": "6", "value": sections["day3"]},
         ],
     }
+
+    print("\n=== WATI PAYLOAD ===")
+    print(payload)
+    print("====================\n")
 
     # -------- API CALL --------
     try:

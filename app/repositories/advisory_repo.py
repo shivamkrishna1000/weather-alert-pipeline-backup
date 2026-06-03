@@ -1,7 +1,9 @@
 from datetime import date
 
+from psycopg2.extras import Json
 
-def advisory_already_sent(connection, greenhouse_id: str, advisory: str) -> bool:
+
+def advisory_already_sent(connection, greenhouse_id: str, advisory: dict) -> bool:
     """
     Check if an advisory has already been sent to a greenhouse today.
 
@@ -29,7 +31,7 @@ def advisory_already_sent(connection, greenhouse_id: str, advisory: str) -> bool
         AND advisory_date = %s
         LIMIT 1
         """,
-        (greenhouse_id, advisory, date.today()),
+        (greenhouse_id, Json(advisory), date.today()),
     )
 
     exists = cursor.fetchone() is not None
@@ -82,7 +84,7 @@ def insert_advisory_log(
             greenhouse["farmer_name"],
             greenhouse["phone"],
             cluster_key,
-            advisory,
+            Json(advisory),
             date.today(),
             "pending",
         ),
@@ -169,4 +171,41 @@ def mark_advisories_as_sent(connection, ids: list[int]) -> None:
     )
 
     connection.commit()
+    cursor.close()
+
+
+def delete_pending_advisories(connection, greenhouse_id: str) -> None:
+    """
+    Remove pending advisory logs for a greenhouse.
+
+    This is used before inserting a newly generated advisory
+    so that only the most recent pending advisory remains
+    available for delivery.
+
+    Sent advisories are preserved for historical tracking.
+
+    Parameters
+    ----------
+    connection : Any
+        Database connection.
+    greenhouse_id : str
+        Unique greenhouse identifier.
+
+    Returns
+    -------
+    None
+    """
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        DELETE FROM advisory_logs
+        WHERE greenhouse_id = %s
+        AND delivery_status = 'pending'
+        """,
+        (greenhouse_id,),
+    )
+
+    connection.commit()
+
     cursor.close()

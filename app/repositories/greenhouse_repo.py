@@ -344,5 +344,5 @@ def update_cluster_key(connection, greenhouse_id: str, cluster_key: str) -> None
         """,
         (cluster_key, greenhouse_id),
     )
-
+    connection.commit()
     cursor.close()

@@ -1,6 +1,3 @@
-from collections import defaultdict
-
-
 def group_advisories_by_farmer(records: list[dict]) -> dict:
     """
     Group advisory records by farmer and greenhouse.
@@ -36,31 +33,39 @@ def group_advisories_by_farmer(records: list[dict]) -> dict:
         if phone not in grouped:
             grouped[phone] = {
                 "farmer_name": r["farmer_name"],
-                "greenhouses": defaultdict(list),
+                "advisories": [],
                 "ids": [],
             }
 
-        gh_name = r["greenhouse_name"] or "Unknown Greenhouse"
-
-        grouped[phone]["greenhouses"][gh_name].append(r["advisory"])
+        grouped[phone]["advisories"].append(r["advisory"])
         grouped[phone]["ids"].append(r["id"])
 
     return grouped
 
 
-def format_greenhouse_message(greenhouse_name: str, advisories: list[str]) -> str:
+def split_advisory_sections(greenhouse_name: str, advisories: list[dict]) -> dict:
     """
-    Format message for a single greenhouse.
+    Convert stored advisory JSON into WATI template sections.
 
     Parameters
     ----------
     greenhouse_name : str
-    advisories : list[str]
+    advisories : list[dict]
 
     Returns
     -------
-    str
+    dict
     """
-    advisory_text = "\n\n".join(advisories)
+    advisory = advisories[-1]
 
-    return f"*{greenhouse_name}*\n\n" f"{advisory_text}"
+    return {
+        "greenhouse": advisory.get(
+            "greenhouse",
+            greenhouse_name,
+        ),
+        "current": advisory.get("current")
+        or "No significant current weather concerns.",
+        "today": advisory.get("today") or "No specific advisory for today.",
+        "tomorrow": advisory.get("tomorrow") or "No specific advisory for tomorrow.",
+        "day3": advisory.get("day3") or "No specific advisory for coming days.",
+    }

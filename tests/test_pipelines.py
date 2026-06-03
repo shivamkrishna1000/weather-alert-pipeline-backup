@@ -385,7 +385,10 @@ def test_generate_and_store_advisories():
     cluster = {
         "cluster_key": "A",
         "members": [
-            {"id": "1"},
+            {
+                "id": "1",
+                "name": "GH1",
+            },
         ],
     }
 
@@ -399,7 +402,12 @@ def test_generate_and_store_advisories():
         generate_and_store_advisories(
             connection,
             cluster,
-            "Rain alert",
+            {
+                "current": "",
+                "today": "Rain alert",
+                "tomorrow": "",
+                "day3": "",
+            },
         )
 
     mock_insert.assert_called_once()
@@ -414,7 +422,10 @@ def test_generate_and_store_advisories_skip_existing():
     cluster = {
         "cluster_key": "A",
         "members": [
-            {"id": "1"},
+            {
+                "id": "1",
+                "name": "GH1",
+            },
         ],
     }
 
@@ -428,7 +439,12 @@ def test_generate_and_store_advisories_skip_existing():
         generate_and_store_advisories(
             connection,
             cluster,
-            "Rain alert",
+            {
+                "current": "",
+                "today": "Rain alert",
+                "tomorrow": "",
+                "day3": "",
+            },
         )
 
     mock_insert.assert_not_called()
@@ -546,13 +562,11 @@ def test_delivery_no_records(mock_fetch):
 
 @patch("app.pipelines.delivery_pipeline.mark_advisories_as_sent")
 @patch("app.pipelines.delivery_pipeline.send_whatsapp_message", return_value=True)
-@patch("app.pipelines.delivery_pipeline.format_greenhouse_message", return_value="msg")
 @patch("app.pipelines.delivery_pipeline.group_advisories_by_farmer")
 @patch("app.pipelines.delivery_pipeline.fetch_pending_advisories")
 def test_delivery_success(
     mock_fetch,
     mock_group,
-    mock_format,
     mock_send,
     mock_mark,
 ):
@@ -563,7 +577,15 @@ def test_delivery_success(
     mock_group.return_value = {
         "999": {
             "farmer_name": "Ravi",
-            "greenhouses": {"GH1": ["Rain alert"]},
+            "advisories": [
+                {
+                    "greenhouse": "GH1",
+                    "current": "",
+                    "today": "Rain alert",
+                    "tomorrow": "",
+                    "day3": "",
+                }
+            ],
             "ids": [1],
         }
     }
@@ -576,13 +598,11 @@ def test_delivery_success(
 
 @patch("app.pipelines.delivery_pipeline.mark_advisories_as_sent")
 @patch("app.pipelines.delivery_pipeline.send_whatsapp_message", return_value=False)
-@patch("app.pipelines.delivery_pipeline.format_greenhouse_message", return_value="msg")
 @patch("app.pipelines.delivery_pipeline.group_advisories_by_farmer")
 @patch("app.pipelines.delivery_pipeline.fetch_pending_advisories")
 def test_delivery_partial_failure(
     mock_fetch,
     mock_group,
-    mock_format,
     mock_send,
     mock_mark,
 ):
@@ -593,7 +613,15 @@ def test_delivery_partial_failure(
     mock_group.return_value = {
         "999": {
             "farmer_name": "Ravi",
-            "greenhouses": {"GH1": ["Rain alert"]},
+            "advisories": [
+                {
+                    "greenhouse": "GH1",
+                    "current": "",
+                    "today": "Rain alert",
+                    "tomorrow": "",
+                    "day3": "",
+                }
+            ],
             "ids": [1],
         }
     }

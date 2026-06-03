@@ -2,7 +2,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.config import get_database_url, get_pilot_villages, is_pilot_mode
 from app.database import get_connection
-from app.repositories.advisory_repo import advisory_already_sent, insert_advisory_log
+from app.repositories.advisory_repo import (
+    advisory_already_sent,
+    delete_pending_advisories,
+    insert_advisory_log,
+)
 from app.repositories.weather_repo import (
     fetch_clusters,
     get_cached_weather,
@@ -134,33 +138,6 @@ def should_skip_cluster(connection, cluster_key: str) -> bool:
     return False
 
 
-def build_advisory_weather(payload: dict) -> dict:
-    """
-    Build temporary advisory metrics.
-
-    Parameters
-    ----------
-    payload : dict
-
-    Returns
-    -------
-    dict
-    """
-    today = payload["today_forecast"]
-
-    rain_windows = today["rain_windows"]
-
-    return {
-        "max_temp": today["max_temp"]["value"],
-        "min_temp": today["min_temp"]["value"],
-        "max_rain": today["rain_mm"],
-        "rain_probability": today["rain_probability"],
-        "rain_hours": len(rain_windows),
-        "max_humidity": today["max_humidity"]["value"],
-        "max_wind": today["max_wind"]["value"],
-    }
-
-
 def fetch_and_prepare_weather(cluster: dict) -> dict:
     """
     Fetch and prepare weather payload.
@@ -213,11 +190,21 @@ def generate_and_store_advisories(
         ):
             continue
 
+        delete_pending_advisories(
+            connection,
+            gh["id"],
+        )
+
+        advisory_payload = {
+            **advisory_message,
+            "greenhouse": gh["name"],
+        }
+
         insert_advisory_log(
             connection,
             gh,
             cluster_key,
-            advisory_message,
+            advisory_payload,
         )
 
 

@@ -194,12 +194,10 @@ def is_cache_fresh(fetched_at) -> bool:
     ----------
     fetched_at : datetime
         Timestamp of last fetch.
-    ttl_hours : int
-        Cache validity duration.
-
     Returns
     -------
     bool
+        True if cache age is less than 2 hours.
     """
     if not fetched_at:
         return False
@@ -210,7 +208,9 @@ def is_cache_fresh(fetched_at) -> bool:
 
     now = datetime.now(UTC)
 
-    return fetched_at.date() == now.date()
+    age_hours = (now - fetched_at).total_seconds() / 3600
+
+    return age_hours < 2
 
 
 # -------- WRITE FUNCTIONS --------

@@ -4,8 +4,8 @@ from app.repositories.advisory_repo import (
     mark_advisories_as_sent,
 )
 from app.services.delivery_service import (
-    format_greenhouse_message,
     group_advisories_by_farmer,
+    split_advisory_sections,
 )
 from app.services.wati_service import send_whatsapp_message
 
@@ -44,15 +44,19 @@ def run_delivery_pipeline(connection) -> None:
 
         all_success = True
 
-        for gh_name, advisories in data["greenhouses"].items():
-            message = format_greenhouse_message(gh_name, advisories)
+        for advisory in data["advisories"]:
 
-            print(f"Sending for greenhouse: {gh_name}")
+            sections = split_advisory_sections(
+                advisory.get("greenhouse", ""),
+                [advisory],
+            )
+
+            print(f"Sending for greenhouse: " f"{sections['greenhouse']}")
 
             success = send_whatsapp_message(
                 phone=phone,
                 farmer_name=farmer_name,
-                message=message,
+                sections=sections,
             )
 
             if not success:
