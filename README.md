@@ -1,230 +1,226 @@
-# 🌦️ Weather Advisory Pipeline for Greenhouse Farmers
+# 🌦️ Kheyti Weather Advisory Pipeline
 
-A scalable, production-ready pipeline that:
-- Syncs greenhouse data from Zoho CRM
-- Geocodes missing locations
-- Clusters greenhouses geographically
-- Fetches weather forecasts
-- Generates rule-based advisories
-- Sends WhatsApp alerts via WATI
+A production-ready weather advisory system that automatically syncs greenhouse data, fetches weather forecasts, generates rule-based agricultural advisories, and delivers WhatsApp notifications to farmers through WATI.
 
 ---
 
-## 🚀 System Overview
+## Features
 
-This system runs in two independent pipelines:
-
-### 1. Weekly Pipeline
-- Sync greenhouse data from Zoho
-- Clean and filter records
-- Geocode missing locations
-
-### 2. Daily Pipeline
-- Cluster greenhouses
-- Fetch weather data
-- Generate advisories
-- Send WhatsApp messages
-
----
-
-## 🧠 Architecture
-
-Zoho CRM → Sync Pipeline → Database
-                        ↓
-                Geocode Pipeline
-                        ↓
-                 Clean Dataset
-                        ↓
-                Clustering Layer
-                        ↓
-                Weather Pipeline
-                        ↓
-                Advisory Engine
-                        ↓
-               Delivery Pipeline (WATI)
+- Zoho CRM greenhouse synchronization
+- Incremental sync using Modified_Time
+- Address geocoding using Google Maps API
+- Geocode result caching
+- Geographic greenhouse clustering
+- OpenWeather forecast integration
+- YAML-driven advisory rule engine
+- Structured advisory generation
+- Advisory storage in PostgreSQL JSONB
+- WhatsApp delivery through WATI templates
+- Advisory deduplication
+- Weather caching
+- Parallel processing support
+- Debug mode for safe testing
 
 ---
 
-## 📦 Project Structure
+## System Architecture
 
+```text
+Zoho CRM
+    ↓
+Sync Pipeline
+    ↓
+PostgreSQL
+    ↓
+Geocode Pipeline
+    ↓
+Greenhouse Records
+    ↓
+Cluster Engine
+    ↓
+Weather Pipeline
+    ↓
+OpenWeather API
+    ↓
+Weather Data
+    ↓
+YAML Rule Engine
+    ↓
+Structured Advisory JSON
+    ↓
+advisory_logs (JSONB)
+    ↓
+Delivery Pipeline
+    ↓
+WATI
+    ↓
+WhatsApp
+```
+
+## Project Structure
+
+```text
 app/
 │
-├── core/                  # Core logic (rules, transformations)
-├── external/              # External API clients
-├── repositories/          # DB queries
-├── services/              # Business logic
-├── pipelines/             # End-to-end workflows
-├── database.py            # DB connection & schema
-├── config.py              # Environment config
-├── constants.py           # Static mappings
-├── main.py                # Entry point
+├── config/
+├── core/
+├── external/
+├── repositories/
+├── services/
+├── pipelines/
+│
+├── database.py
+├── config.py
+├── constants.py
+└── main.py
+```
 
----
+## Weekly Pipeline
 
-## ⚙️ Key Features
+The weekly pipeline maintains greenhouse master data.
 
-### ✅ Data Sync from Zoho
-- Uses COQL with pagination
-- Supports incremental sync using `Modified_Time`
+### Run
 
-### ✅ Data Cleaning & Filtering
-- Filters based on allowed statuses
-- Extracts structured fields like phone, location, etc.
-
-### ✅ Geocoding Pipeline
-- Builds address from village/taluk/district
-- Uses Google Maps API
-- Caches results to reduce API cost
-- Retry logic with max attempts
-
-### ✅ Clustering System
-Supports 3 modes:
-- `taluk`
-- `village`
-- `distance` (DBSCAN clustering)
-
-### ✅ Weather Processing
-- Fetches forecast from WeatherAPI
-- Extracts key features like:
-  - temperature
-  - rainfall
-  - humidity
-  - wind
-
-### ✅ Advisory Engine
-- Rule-based system (deterministic)
-- Category priority: rain → wind → humidity → temperature
-- Conflict handling (e.g., rain overrides irrigation advice)
-
-### ✅ Delivery System
-- Groups advisories by farmer
-- Sends via WhatsApp (WATI API)
-- Debug mode support (no sending, only logging)
-
----
-
-## 🗄️ Database Schema
-
-Tables created automatically:
-
-- `greenhouses`
-- `greenhouses_missing_location`
-- `geocode_cache`
-- `weather_cache`
-- `weather_data`
-- `advisory_logs`
-- `sync_metadata`
-
-Created via:
-create_tables(connection)
-
----
-
-## 🔁 Pipelines
-
-### Weekly Pipeline
-
+```bash
 python -m app.main weekly
+```
 
-Runs:
-1. Sync pipeline
-2. Geocode pipeline
+### Responsibilities
+
+- Fetch greenhouse records from Zoho CRM
+- Filter valid greenhouse records
+- Insert/update greenhouse data
+- Identify missing coordinates
+- Geocode missing locations
+- Cache geocode results
 
 ---
 
-### Daily Pipeline
+## Daily Pipeline
 
+The daily pipeline generates and delivers weather advisories.
+
+### Run
+
+```bash
 python -m app.main daily
+```
 
-Runs:
-1. Weather pipeline
-2. Advisory generation
-3. Delivery pipeline
+### Responsibilities
 
----
-
-## 🧾 Environment Setup
-
-Copy `.env.example` → `.env` and fill in the required values.
+- Build greenhouse clusters
+- Fetch weather forecasts
+- Generate advisories
+- Store advisories
+- Deliver WhatsApp notifications
 
 ---
 
-## 🧪 Debug Mode (Important)
+## Advisory Storage
 
-If:
+Advisories are stored directly as structured JSON in PostgreSQL JSONB.
+
+Example:
+
+```json
+{
+  "day3": "Rainfall is expected later this week. Plan field operations accordingly.",
+  "today": "Heavy rain expected today. Ensure proper drainage and avoid irrigation. Expected rain window: 02:30 PM to 05:30 PM, 09:30 PM to 09:30 PM. Strong winds expected today. Avoid pesticide spraying. Peak winds expected around 09:30 AM.",
+  "current": "Strong winds are occurring currently. Avoid pesticide spraying.",
+  "tomorrow": "Heavy rainfall is expected tomorrow. Plan irrigation and field activities accordingly. Expected rain window: 02:30 AM to 08:30 AM, 01:30 PM to 11:30 PM. Strong winds are expected tomorrow. Plan spraying activities accordingly. Peak winds expected around 07:30 PM.",
+  "greenhouse": "GH-2043"
+}
+```
+
+---
+
+## WhatsApp Template
+
+| Variable | Value |
+|-----------|---------|
+| {{1}} | Farmer Name |
+| {{2}} | Greenhouse Name |
+| {{3}} | Current Conditions |
+| {{4}} | Today's Advisory |
+| {{5}} | Tomorrow's Advisory |
+| {{6}} | Day 3 Outlook |
+
+---
+
+## Database Tables
+
+- greenhouses
+- greenhouses_missing_location
+- geocode_cache
+- weather_cache
+- weather_data
+- advisory_logs
+- sync_metadata
+
+### advisory_logs
+
+| Column | Type |
+|----------|----------|
+| greenhouse_id | TEXT |
+| greenhouse_name | TEXT |
+| farmer_name | TEXT |
+| phone | TEXT |
+| cluster_key | TEXT |
+| advisory | JSONB |
+| advisory_date | DATE |
+| delivery_status | TEXT |
+| sent_at | TIMESTAMP |
+
+---
+
+## Environment Variables
+
+```env
 DEBUG_MODE=true
 
-Then:
-- Messages are NOT sent
-- Only printed in terminal
-- Delivery status is NOT updated
+ZOHO_CLIENT_ID=
+ZOHO_CLIENT_SECRET=
+ZOHO_REFRESH_TOKEN=
+ZOHO_ACCOUNTS_URL=https://accounts.zoho.com
+ZOHO_API_BASE=https://www.zohoapis.com
+ZOHO_MODULE=Sheds
 
-This prevents accidental spamming.
+GOOGLE_MAPS_API_KEY=
 
----
+OPENWEATHER_API_KEY=
 
-## 🔄 Idempotency & Safety
+CLUSTER_MODE= #village/taluk/distance
 
-This system avoids duplicate work:
+PILOT_MODE=true
+PILOT_VILLAGES=KISHANNAGAR,SADISOPUR
 
-### ✔ Sync
-- Uses `last_sync` timestamp
+WATI_BASE_URL=
+WATI_API_TOKEN=
+WATI_TEMPLATE_NAME=weather_advisory_v1
 
-### ✔ Weather
-- Uses cache (same-day freshness check)
+DATABASE_URL=
 
-### ✔ Advisory
-- Prevents duplicate advisory per greenhouse per day
-
-### ✔ Delivery
-- Only sends `pending` advisories
-
----
-
-## ⚡ Parallel Processing
-
-- Geocoding → ThreadPool (20 workers)
-- Weather → ThreadPool (10 workers)
-
-Each worker uses a separate DB connection (important for scaling)
+TEST_DATABASE_URL=
+```
 
 ---
 
-## 📊 Advisory Rules (Example)
+## Installation
 
-{
-  "rain": "Avoid irrigation",
-  "wind": "Avoid spraying",
-  "humidity": "Monitor fungal risk",
-  "temperature": "Ensure irrigation"
-}
-
----
-
-## 🧱 Design Decisions
-
-### 1. Cluster-Based Weather Fetching
-- Reduces API calls massively
-- Slight trade-off in accuracy
-
-### 2. Rule-Based Advisory System
-- Deterministic and explainable
-- Easy to modify
-
-### 3. Cache-First Strategy
-- Reduces API cost significantly
-
-### 4. Separate Pipelines
-- Weekly = heavy operations
-- Daily = time-sensitive operations
-
----
-
-## 🧑‍💻 Running Locally
-
+```bash
 pip install -r requirements.txt
-
-python -m app.main weekly
-python -m app.main daily
+```
 
 ---
+
+## Running Tests
+
+```bash
+pytest
+```
+
+Coverage:
+
+```bash
+pytest --cov=app --cov-fail-under=80 --cov-report=term
+```
