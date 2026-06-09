@@ -114,6 +114,8 @@ def extract_fields(records: List[Dict[str, Any]], fields: Dict) -> List[Dict[str
                 "district": record.get(fields["district"]),
                 "taluk": record.get(fields["taluk"]),
                 "village": record.get(fields["village"]),
+                "state": record.get(fields["state"]),
+                "region": record.get(fields["region"]),
                 "status": record.get(fields["status"]),
                 "id": record.get(fields["id"]),
             }

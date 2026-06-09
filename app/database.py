@@ -58,6 +58,8 @@ def create_tables(connection) -> None:
             district TEXT,
             taluk TEXT,
             village TEXT,
+            state TEXT,
+            region TEXT,
             status TEXT,
             geocoded BOOLEAN DEFAULT FALSE
         )

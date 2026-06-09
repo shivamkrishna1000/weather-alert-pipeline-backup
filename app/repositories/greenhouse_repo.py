@@ -26,8 +26,8 @@ def insert_greenhouses(connection, records: list[dict]) -> None:
     for r in records:
         cursor.execute(
             """
-            INSERT INTO greenhouses (id, name, farmer_name, phone, latitude, longitude, district, taluk, village, status, geocoded)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO greenhouses (id, name, farmer_name, phone, latitude, longitude, district, taluk, village, state, region, status, geocoded)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(id) DO UPDATE SET
                 name = COALESCE(excluded.name, greenhouses.name),
                 farmer_name = COALESCE(excluded.farmer_name, greenhouses.farmer_name),
@@ -37,6 +37,8 @@ def insert_greenhouses(connection, records: list[dict]) -> None:
                 district = COALESCE(excluded.district, greenhouses.district),
                 taluk = COALESCE(excluded.taluk, greenhouses.taluk),
                 village = COALESCE(excluded.village, greenhouses.village),
+                state = COALESCE(excluded.state, greenhouses.state),
+                region = COALESCE(excluded.region, greenhouses.region),
                 status = COALESCE(excluded.status, greenhouses.status),
                 geocoded = excluded.geocoded
             """,
@@ -50,6 +52,8 @@ def insert_greenhouses(connection, records: list[dict]) -> None:
                 r.get("district"),
                 r.get("taluk"),
                 r.get("village"),
+                r.get("state"),
+                r.get("region"),
                 r.get("status"),
                 False,
             ),

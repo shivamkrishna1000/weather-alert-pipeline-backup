@@ -39,9 +39,14 @@ def insert_geocoded_record(connection, record: dict, lat: float, lon: float) -> 
     cursor.execute(
         """
         INSERT INTO greenhouses
-        (id, name, farmer_name, phone, latitude, longitude, status, geocoded)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+        (id, name, farmer_name, phone, latitude, longitude, district, taluk, village, state, region, status, geocoded)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
         ON CONFLICT(id) DO UPDATE SET
+            district = EXCLUDED.district,
+            taluk = EXCLUDED.taluk,
+            village = EXCLUDED.village,
+            state = EXCLUDED.state,
+            region = EXCLUDED.region,
             latitude=EXCLUDED.latitude,
             longitude=EXCLUDED.longitude,
             geocoded=True
@@ -53,6 +58,11 @@ def insert_geocoded_record(connection, record: dict, lat: float, lon: float) -> 
             record["phone"],
             lat,
             lon,
+            record.get("district"),
+            record.get("taluk"),
+            record.get("village"),
+            record.get("state"),
+            record.get("region"),
             record["status"],
         ),
     )
