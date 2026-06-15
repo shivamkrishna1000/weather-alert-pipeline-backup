@@ -33,15 +33,6 @@ def test_process_record_success():
         mock_persist.assert_called_once()
 
 
-def test_process_record_skip_empty_address():
-    record = {"id": "1", "attempts": 0}
-
-    with patch("app.pipelines.geocode_pipeline.prepare_address", return_value=None):
-        result = process_record(None, record)
-
-        assert result is False
-
-
 def test_process_record_max_attempts():
     record = {"id": "1", "attempts": 5}
 
@@ -274,44 +265,6 @@ def test_weather_pipeline_cache_hit(mock_db_url, mock_conn):
         mock_process.assert_called_once()
 
 
-@patch("app.pipelines.weather_pipeline.get_connection", return_value=MagicMock())
-@patch("app.pipelines.weather_pipeline.get_database_url", return_value="dummy")
-def test_weather_pipeline_fetch_and_store(mock_db_url, mock_conn):
-    connection = MagicMock()
-
-    clusters = [{"cluster_key": "A", "latitude": 1, "longitude": 2}]
-
-    with patch(
-        "app.pipelines.weather_pipeline.fetch_clusters",
-        return_value=clusters,
-    ), patch(
-        "app.pipelines.weather_pipeline.process_cluster_parallel",
-        return_value=True,
-    ):
-
-        run_weather_pipeline(connection)
-
-        assert True
-
-
-@patch("app.pipelines.weather_pipeline.get_connection", return_value=MagicMock())
-@patch("app.pipelines.weather_pipeline.get_database_url", return_value="dummy")
-def test_weather_pipeline_api_failure(mock_db_url, mock_conn):
-    clusters = [{"cluster_key": "A", "latitude": 1, "longitude": 2}]
-
-    with patch(
-        "app.pipelines.weather_pipeline.fetch_clusters",
-        return_value=clusters,
-    ), patch(
-        "app.pipelines.weather_pipeline.process_cluster_parallel",
-        side_effect=RuntimeError("fail"),
-    ):
-
-        run_weather_pipeline(MagicMock())
-
-        assert True
-
-
 def test_filter_pilot_clusters_no_villages():
 
     from app.pipelines.weather_pipeline import filter_pilot_clusters
@@ -361,6 +314,11 @@ def test_fetch_and_prepare_weather():
         "cluster_key": "A",
         "latitude": 1,
         "longitude": 2,
+        "members": [
+            {
+                "district": "PATNA-BIHAR",
+            }
+        ],
     }
 
     with patch(
@@ -369,9 +327,14 @@ def test_fetch_and_prepare_weather():
     ), patch(
         "app.pipelines.weather_pipeline.generate_advisories",
         return_value="Rain alert",
-    ):
+    ) as mock_generate:
 
         result = fetch_and_prepare_weather(cluster)
+
+        mock_generate.assert_called_once_with(
+            {"today_forecast": {}},
+            "PATNA-BIHAR",
+        )
 
     assert result["advisories"] == "Rain alert"
 

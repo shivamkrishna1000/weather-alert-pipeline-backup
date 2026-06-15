@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+from app.services.imd_warning_service import get_imd_warning_fragments
+
 CONFIG_DIR = Path(__file__).parent.parent / "config"
 
 
@@ -367,7 +369,48 @@ def build_rule_weather(payload: dict) -> dict:
     }
 
 
-def generate_advisories(payload: dict) -> str:
+def append_imd_warnings(advisories: dict, greenhouse_district: str | None) -> dict:
+    """
+    Append IMD warning fragments to advisory sections.
+
+    Parameters
+    ----------
+    advisories : dict
+    greenhouse_district : str | None
+
+    Returns
+    -------
+    dict
+    """
+    if not greenhouse_district:
+        return advisories
+
+    fragments = get_imd_warning_fragments(greenhouse_district)
+
+    for section in (
+        "today",
+        "tomorrow",
+        "day3",
+    ):
+        fragment = fragments.get(section)
+
+        if not fragment:
+            continue
+
+        existing = advisories.get(
+            section,
+            "",
+        ).strip()
+
+        if existing:
+            advisories[section] = f"{existing} {fragment}"
+        else:
+            advisories[section] = fragment
+
+    return advisories
+
+
+def generate_advisories(payload: dict, greenhouse_district: str | None = None) -> dict:
     """
     Generate advisories from YAML rules.
 
@@ -383,4 +426,6 @@ def generate_advisories(payload: dict) -> str:
 
     advisories = evaluate_rules(weather)
 
-    return format_advisories(advisories)
+    formatted = format_advisories(advisories)
+
+    return append_imd_warnings(formatted, greenhouse_district)

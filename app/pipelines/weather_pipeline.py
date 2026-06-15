@@ -154,7 +154,12 @@ def fetch_and_prepare_weather(cluster: dict) -> dict:
 
     payload = build_weather_payload(cluster["latitude"], cluster["longitude"])
 
-    advisories = generate_advisories(payload)
+    district = None
+
+    if cluster["members"]:
+        district = cluster["members"][0].get("district")
+
+    advisories = generate_advisories(payload, district)
 
     return {
         **cluster,

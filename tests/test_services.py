@@ -566,3 +566,341 @@ def test_rain_suppresses_moderate_rain():
 
     assert "Heavy rain expected today" in result["today"]
     assert "Moderate rainfall possible today" not in result["today"]
+
+
+@patch("app.services.advisory_service.get_imd_warning_fragments")
+def test_append_imd_warnings_existing_text(
+    mock_fragments,
+):
+    from app.services.advisory_service import append_imd_warnings
+
+    mock_fragments.return_value = {
+        "today": "IMD ALERT",
+        "tomorrow": None,
+        "day3": None,
+    }
+
+    advisories = {
+        "current": "",
+        "today": "Rain expected",
+        "tomorrow": "",
+        "day3": "",
+    }
+
+    result = append_imd_warnings(
+        advisories,
+        "PATNA-BIHAR",
+    )
+
+    assert result["today"] == "Rain expected IMD ALERT"
+
+
+@patch("app.services.advisory_service.get_imd_warning_fragments")
+def test_append_imd_warnings_empty_section(
+    mock_fragments,
+):
+    from app.services.advisory_service import append_imd_warnings
+
+    mock_fragments.return_value = {
+        "today": "IMD ALERT",
+        "tomorrow": None,
+        "day3": None,
+    }
+
+    advisories = {
+        "current": "",
+        "today": "",
+        "tomorrow": "",
+        "day3": "",
+    }
+
+    result = append_imd_warnings(
+        advisories,
+        "PATNA-BIHAR",
+    )
+
+    assert result["today"] == "IMD ALERT"
+
+
+def test_append_imd_warnings_no_district():
+
+    from app.services.advisory_service import append_imd_warnings
+
+    advisories = {
+        "current": "",
+        "today": "",
+        "tomorrow": "",
+        "day3": "",
+    }
+
+    result = append_imd_warnings(
+        advisories,
+        None,
+    )
+
+    assert result == advisories
+
+
+# ------------------ IMD WARNING SERVICE ------------------
+
+
+def test_parse_warning_codes():
+    from app.services.imd_warning_service import parse_warning_codes
+
+    result = parse_warning_codes("16,4")
+
+    assert result == [
+        "Very Heavy Rain",
+        "Thunderstorm & Lightning",
+    ]
+
+
+def test_get_alert_color():
+    from app.services.imd_warning_service import get_alert_color
+
+    assert get_alert_color("1") == "Red"
+    assert get_alert_color("2") == "Orange"
+    assert get_alert_color("3") == "Yellow"
+    assert get_alert_color("4") == "Green"
+
+
+def test_build_warning_fragment_enabled():
+    from app.services.imd_warning_service import build_warning_fragment
+
+    result = build_warning_fragment(
+        "Orange",
+        [
+            "Very Heavy Rain",
+            "Thunderstorm & Lightning",
+        ],
+    )
+
+    assert (
+        result == "🟠 IMD Orange Alert: "
+        "Very Heavy Rain, Thunderstorm & Lightning "
+        "expected in your district."
+    )
+
+
+def test_build_warning_fragment_disabled():
+    from app.services.imd_warning_service import build_warning_fragment
+
+    result = build_warning_fragment(
+        "Yellow",
+        ["Thunderstorm & Lightning"],
+    )
+
+    assert result is None
+
+
+def test_get_imd_warning_fragments_no_mapping():
+    from app.services.imd_warning_service import get_imd_warning_fragments
+
+    result = get_imd_warning_fragments("UNKNOWN_DISTRICT")
+
+    assert result == {
+        "today": None,
+        "tomorrow": None,
+        "day3": None,
+    }
+
+
+@patch("app.services.imd_warning_service.get_imd_record")
+def test_get_imd_warning_fragments_success(
+    mock_record,
+):
+    from app.services.imd_warning_service import get_imd_warning_fragments
+
+    mock_record.return_value = {
+        "Day_1": "16,4",
+        "Day1_Color": "2",
+        "Day_2": "4",
+        "Day2_Color": "3",
+        "Day_3": "4",
+        "Day3_Color": "4",
+    }
+
+    result = get_imd_warning_fragments("PATNA-BIHAR")
+
+    assert result["today"] is not None
+    assert result["tomorrow"] is None
+    assert result["day3"] is None
+
+
+@patch(
+    "app.services.imd_warning_service.get_imd_record",
+    return_value=None,
+)
+def test_get_imd_warning_fragments_no_record(
+    mock_record,
+):
+    from app.services.imd_warning_service import get_imd_warning_fragments
+
+    result = get_imd_warning_fragments("PATNA-BIHAR")
+
+    assert result == {
+        "today": None,
+        "tomorrow": None,
+        "day3": None,
+    }
+
+
+def test_get_day_fragment_disabled_alert():
+
+    from app.services.imd_warning_service import get_day_fragment
+
+    record = {
+        "Day_1": "4",
+        "Day1_Color": "3",
+    }
+
+    result = get_day_fragment(
+        record,
+        "Day_1",
+        "Day1_Color",
+    )
+
+    assert result is None
+
+
+def test_parse_warning_codes_invalid():
+
+    from app.services.imd_warning_service import parse_warning_codes
+
+    result = parse_warning_codes("999,abc")
+
+    assert result == []
+
+
+@patch("app.services.imd_warning_service.fetch_district_warnings")
+def test_load_imd_records(
+    mock_fetch,
+):
+    from app.services import imd_warning_service
+
+    imd_warning_service._IMD_RECORD_CACHE = None
+
+    mock_fetch.return_value = [
+        {
+            "Obj_id": "118",
+            "District": "RANGAREDDY",
+        },
+        {
+            "Obj_id": "364",
+            "District": "PATNA",
+        },
+    ]
+
+    result = imd_warning_service.load_imd_records()
+
+    assert result["118"]["District"] == "RANGAREDDY"
+    assert result["364"]["District"] == "PATNA"
+
+
+@patch("app.services.imd_warning_service.fetch_district_warnings")
+def test_load_imd_records_skips_empty_obj_id(
+    mock_fetch,
+):
+    from app.services import imd_warning_service
+
+    imd_warning_service._IMD_RECORD_CACHE = None
+
+    mock_fetch.return_value = [
+        {
+            "Obj_id": "",
+            "District": "BAD",
+        },
+        {
+            "Obj_id": "118",
+            "District": "GOOD",
+        },
+    ]
+
+    result = imd_warning_service.load_imd_records()
+
+    assert len(result) == 1
+    assert result["118"]["District"] == "GOOD"
+
+
+def test_get_alert_color_invalid():
+
+    from app.services.imd_warning_service import get_alert_color
+
+    assert get_alert_color("abc") is None
+
+
+def test_parse_warning_codes_empty():
+
+    from app.services.imd_warning_service import parse_warning_codes
+
+    assert parse_warning_codes("") == []
+
+
+def test_get_day_fragment_enabled():
+
+    from app.services.imd_warning_service import get_day_fragment
+
+    record = {
+        "Day_1": "16,4",
+        "Day1_Color": "2",
+    }
+
+    result = get_day_fragment(
+        record,
+        "Day_1",
+        "Day1_Color",
+    )
+
+    assert "Orange Alert" in result
+
+
+def test_load_district_mapping_cache():
+
+    from app.services import imd_warning_service
+
+    imd_warning_service._MAPPING_CACHE = {
+        "A": "1",
+    }
+
+    result = imd_warning_service.load_district_mapping()
+
+    assert result == {
+        "A": "1",
+    }
+
+
+def test_get_imd_obj_id_none():
+
+    from app.services.imd_warning_service import get_imd_obj_id
+
+    assert get_imd_obj_id(None) is None
+
+
+def test_build_warning_fragment_no_warnings():
+
+    from app.services.imd_warning_service import build_warning_fragment
+
+    result = build_warning_fragment(
+        "Orange",
+        [],
+    )
+
+    assert result is None
+
+
+def test_get_day_fragment_invalid_color():
+
+    from app.services.imd_warning_service import get_day_fragment
+
+    record = {
+        "Day_1": "16",
+        "Day1_Color": "999",
+    }
+
+    result = get_day_fragment(
+        record,
+        "Day_1",
+        "Day1_Color",
+    )
+
+    assert result is None

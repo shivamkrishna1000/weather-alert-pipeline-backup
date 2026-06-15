@@ -188,3 +188,194 @@ def test_fetch_weather_missing_current():
 
         with pytest.raises(RuntimeError):
             fetch_weather_raw(1, 2)
+
+
+# ------------------ IMD CLIENT ------------------
+
+
+def test_imd_get_valid_access_token_cached():
+
+    from app.external import imd_client
+
+    imd_client._access_token = "cached-token"
+    imd_client._expiry_time = 9999999999
+
+    assert imd_client.get_valid_access_token() == "cached-token"
+
+
+@patch("app.external.imd_client.requests.post")
+@patch(
+    "app.external.imd_client.get_imd_email",
+    return_value="a@test.com",
+)
+@patch(
+    "app.external.imd_client.get_imd_password",
+    return_value="secret",
+)
+def test_imd_refresh_access_token_invalid_json(
+    mock_password,
+    mock_email,
+    mock_post,
+):
+    from app.external.imd_client import refresh_access_token
+
+    response = MagicMock()
+
+    response.raise_for_status.return_value = None
+
+    response.json.side_effect = ValueError()
+
+    mock_post.return_value = response
+
+    with pytest.raises(RuntimeError):
+        refresh_access_token()
+
+
+@patch("app.external.imd_client.requests.post")
+@patch(
+    "app.external.imd_client.get_imd_password",
+    return_value="secret",
+)
+@patch(
+    "app.external.imd_client.get_imd_email",
+    return_value="test@test.com",
+)
+def test_imd_refresh_access_token_request_failure(
+    mock_email,
+    mock_password,
+    mock_post,
+):
+    from app.external.imd_client import refresh_access_token
+
+    mock_post.side_effect = requests.exceptions.RequestException("fail")
+
+    with pytest.raises(RuntimeError):
+        refresh_access_token()
+
+
+def test_validate_district_warning_response_not_list():
+
+    from app.external.imd_client import validate_district_warning_response
+
+    with pytest.raises(RuntimeError):
+        validate_district_warning_response({})
+
+
+def test_validate_district_warning_response_invalid_record():
+
+    from app.external.imd_client import validate_district_warning_response
+
+    with pytest.raises(RuntimeError):
+        validate_district_warning_response(
+            [
+                "bad-record",
+            ]
+        )
+
+
+@patch(
+    "app.external.imd_client.get_imd_password",
+    return_value="secret",
+)
+@patch(
+    "app.external.imd_client.get_imd_email",
+    return_value="user@test.com",
+)
+@patch(
+    "app.external.imd_client.requests.post",
+)
+def test_refresh_access_token_success(
+    mock_post,
+    mock_email,
+    mock_password,
+):
+    from app.external import imd_client
+
+    response = MagicMock()
+
+    response.raise_for_status.return_value = None
+
+    response.json.return_value = {
+        "access_token": "new-token",
+        "expires_in": 3600,
+    }
+
+    mock_post.return_value = response
+
+    token = imd_client.refresh_access_token()
+
+    assert token == "new-token"
+    assert imd_client._access_token == "new-token"
+
+
+@patch(
+    "app.external.imd_client.refresh_access_token",
+    return_value="fresh-token",
+)
+def test_get_valid_access_token_refresh(
+    mock_refresh,
+):
+    from app.external import imd_client
+
+    imd_client._access_token = None
+    imd_client._expiry_time = 0
+
+    token = imd_client.get_valid_access_token()
+
+    assert token == "fresh-token"
+
+    mock_refresh.assert_called_once()
+
+
+@patch(
+    "app.external.imd_client.get_imd_api_key",
+    return_value="api-key",
+)
+@patch(
+    "app.external.imd_client.get_valid_access_token",
+    return_value="token",
+)
+@patch(
+    "app.external.imd_client.requests.get",
+)
+def test_fetch_district_warnings_success(
+    mock_get,
+    mock_token,
+    mock_api_key,
+):
+    from app.external.imd_client import fetch_district_warnings
+
+    response = MagicMock()
+
+    response.raise_for_status.return_value = None
+
+    response.json.return_value = [
+        {
+            "Obj_id": "118",
+        }
+    ]
+
+    mock_get.return_value = response
+
+    result = fetch_district_warnings()
+
+    assert result == [
+        {
+            "Obj_id": "118",
+        }
+    ]
+
+
+def test_validate_district_warning_response_success():
+
+    from app.external.imd_client import validate_district_warning_response
+
+    payload = [
+        {
+            "Obj_id": "118",
+        }
+    ]
+
+    result = validate_district_warning_response(payload)
+
+    assert result == payload

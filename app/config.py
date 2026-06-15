@@ -136,3 +136,33 @@ def is_debug_mode() -> bool:
     """Return debug mode flag."""
     val = os.environ.get("DEBUG_MODE", "false").lower()
     return val == "true"
+
+
+def get_imd_api_key() -> str:
+    """Return IMD API key."""
+    value = os.environ.get("IMD_API_KEY")
+
+    if not value:
+        raise ValueError("IMD_API_KEY is not set")
+
+    return value
+
+
+def get_imd_email() -> str:
+    """Return IMD account email."""
+    value = os.environ.get("IMD_EMAIL")
+
+    if not value:
+        raise ValueError("IMD_EMAIL is not set")
+
+    return value
+
+
+def get_imd_password() -> str:
+    """Return IMD account password."""
+    value = os.environ.get("IMD_PASSWORD")
+
+    if not value:
+        raise ValueError("IMD_PASSWORD is not set")
+
+    return value
