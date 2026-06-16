@@ -56,7 +56,6 @@ IMD_WARNING_CODE_DESCRIPTIONS = {
 
 
 # Actual verified API mapping
-# (NOT the mapping documented by IMD)
 IMD_COLOR_MAPPING = {
     1: "Red",
     2: "Orange",
